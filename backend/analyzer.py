@@ -1,5 +1,7 @@
 from urllib.parse import urlparse
 
+from backend.detectors.dark_patterns import detect_dark_patterns
+
 
 def analyze_website(scraped_data):
 
@@ -13,6 +15,9 @@ def analyze_website(scraped_data):
     headers = scraped_data.get("headers", {})
 
     parsed_url = urlparse(url)
+
+    # Run dark pattern detector
+    dark_pattern_analysis = detect_dark_patterns(scraped_data)
 
     # Convert header names to lowercase
     headers = {
@@ -50,7 +55,10 @@ def analyze_website(scraped_data):
         findings.append({
             "issue": "Password field detected on non-HTTPS website",
             "severity": "Critical",
-            "description": "A password input is present while the website is not using HTTPS."
+            "description": (
+                "A password input is present while the website "
+                "is not using HTTPS."
+            )
         })
 
         score -= 40
@@ -64,7 +72,10 @@ def analyze_website(scraped_data):
         findings.append({
             "issue": "Missing Content-Security-Policy header",
             "severity": "Medium",
-            "description": "The website does not define a Content-Security-Policy header."
+            "description": (
+                "The website does not define a "
+                "Content-Security-Policy header."
+            )
         })
 
         score -= 10
@@ -78,7 +89,10 @@ def analyze_website(scraped_data):
         findings.append({
             "issue": "Missing X-Frame-Options header",
             "severity": "Medium",
-            "description": "The website does not define X-Frame-Options protection against clickjacking."
+            "description": (
+                "The website does not define X-Frame-Options "
+                "protection against clickjacking."
+            )
         })
 
         score -= 10
@@ -92,7 +106,10 @@ def analyze_website(scraped_data):
         findings.append({
             "issue": "Missing X-Content-Type-Options header",
             "severity": "Low",
-            "description": "The website does not define X-Content-Type-Options to help prevent MIME-type sniffing."
+            "description": (
+                "The website does not define X-Content-Type-Options "
+                "to help prevent MIME-type sniffing."
+            )
         })
 
         score -= 5
@@ -108,7 +125,10 @@ def analyze_website(scraped_data):
             findings.append({
                 "issue": "Missing Strict-Transport-Security header",
                 "severity": "Medium",
-                "description": "The HTTPS website does not define HSTS protection."
+                "description": (
+                    "The HTTPS website does not define "
+                    "HSTS protection."
+                )
             })
 
             score -= 10
@@ -139,7 +159,10 @@ def analyze_website(scraped_data):
         findings.append({
             "issue": "External links detected",
             "severity": "Info",
-            "description": f"The website contains {len(external_links)} links pointing to external domains."
+            "description": (
+                f"The website contains {len(external_links)} "
+                "links pointing to external domains."
+            )
         })
 
     # -------------------------------------------------
@@ -169,7 +192,10 @@ def analyze_website(scraped_data):
         findings.append({
             "issue": "Suspicious links detected",
             "severity": "Medium",
-            "description": f"The website contains {len(suspicious_links)} potentially suspicious links."
+            "description": (
+                f"The website contains {len(suspicious_links)} "
+                "potentially suspicious links."
+            )
         })
 
         score -= 15
@@ -183,7 +209,9 @@ def analyze_website(scraped_data):
         findings.append({
             "issue": "User input fields detected",
             "severity": "Info",
-            "description": f"The website contains {len(inputs)} input field(s)."
+            "description": (
+                f"The website contains {len(inputs)} input field(s)."
+            )
         })
 
     # -------------------------------------------------
@@ -195,7 +223,9 @@ def analyze_website(scraped_data):
         findings.append({
             "issue": "Interactive buttons detected",
             "severity": "Info",
-            "description": f"The website contains {len(buttons)} button(s)."
+            "description": (
+                f"The website contains {len(buttons)} button(s)."
+            )
         })
 
     # -------------------------------------------------
@@ -204,7 +234,6 @@ def analyze_website(scraped_data):
 
     score = max(0, score)
 
-    # Determine risk level
     if score >= 80:
 
         risk_level = "Low"
@@ -233,5 +262,6 @@ def analyze_website(scraped_data):
         "risk_level": risk_level,
         "security_score": score,
         "total_findings": len(findings),
-        "findings": findings
+        "findings": findings,
+        "dark_pattern_analysis": dark_pattern_analysis
     }
