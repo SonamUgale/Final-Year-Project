@@ -14,6 +14,10 @@ body {
   min-height: 100vh;
 }
 
+/* =========================
+   HERO
+========================= */
+
 .hero {
   text-align: center;
   padding: 70px 20px 45px;
@@ -36,11 +40,19 @@ body {
   color: #cbd5e1;
 }
 
+/* =========================
+   CONTAINER
+========================= */
+
 .container {
   max-width: 950px;
   margin: -25px auto 60px;
   padding: 0 20px;
 }
+
+/* =========================
+   SCAN BOX
+========================= */
 
 .scan-box,
 .results {
@@ -75,6 +87,10 @@ body {
   border-color: #6366f1;
 }
 
+.input-row input:disabled {
+  background: #f1f5f9;
+}
+
 .input-row button {
   padding: 15px 24px;
   border: none;
@@ -95,38 +111,215 @@ body {
   cursor: not-allowed;
 }
 
+/* =========================
+   ERROR
+========================= */
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 15px;
+  padding: 13px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #991b1b;
+}
+
+.error-message span {
+  font-size: 20px;
+}
+
+.error-message p {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* =========================
+   LOADING
+========================= */
+
 .loading {
   text-align: center;
   margin-top: 25px;
-  padding: 20px;
+  padding: 25px;
   background: #eef2ff;
   border-radius: 10px;
   line-height: 1.7;
+  color: #3730a3;
 }
+
+.loading-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.loading strong {
+  display: block;
+  font-size: 17px;
+}
+
+.loading p {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.progress-bar {
+  height: 7px;
+  margin-top: 15px;
+  background: #c7d2fe;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  width: 45%;
+  height: 100%;
+  background: #4f46e5;
+  border-radius: 10px;
+  animation: progress 1.5s infinite ease-in-out;
+}
+
+@keyframes progress {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+/* =========================
+   RESULTS
+========================= */
 
 .results {
   margin-top: 25px;
 }
 
-.results h2 {
-  font-size: 28px;
-  margin-bottom: 20px;
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
 }
 
-.results h3 {
-  margin: 25px 0 15px;
+.results-header h2 {
+  font-size: 28px;
+  margin-bottom: 6px;
 }
+
+.results-header p {
+  color: #64748b;
+}
+
+.scan-status {
+  padding: 8px 13px;
+  border-radius: 20px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 13px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+/* =========================
+   WEBSITE INFO
+========================= */
 
 .website-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 15px;
+  margin-top: 22px;
+}
+
+.info-item {
   background: #f8fafc;
   padding: 18px;
   border-radius: 10px;
+  border: 1px solid #e2e8f0;
 }
 
-.website-info p {
-  margin: 7px 0;
-  word-break: break-all;
+.info-item span {
+  display: block;
+  margin-bottom: 7px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
 }
+
+.info-item strong {
+  display: block;
+  word-break: break-word;
+}
+
+/* =========================
+   SECURITY SUMMARY
+========================= */
+
+.security-summary {
+  margin-top: 25px;
+  padding: 25px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.summary-heading {
+  text-align: center;
+}
+
+.summary-heading h3 {
+  margin-bottom: 6px;
+}
+
+.summary-heading p {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.summary-total {
+  text-align: center;
+  margin: 20px 0 5px;
+}
+
+.summary-total strong {
+  display: block;
+  font-size: 42px;
+  color: #4f46e5;
+}
+
+.summary-total span {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* =========================
+   ANALYSIS
+========================= */
+
+.analysis-heading {
+  margin-top: 28px;
+  margin-bottom: 15px;
+}
+
+.analysis-heading h3 {
+  margin-bottom: 5px;
+}
+
+.analysis-heading p {
+  color: #64748b;
+}
+
+/* =========================
+   PATTERNS
+========================= */
 
 .patterns {
   display: grid;
@@ -140,6 +333,27 @@ body {
   background: #fff;
 }
 
+.pattern-card:hover {
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.06);
+}
+
+.pattern-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.pattern-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pattern-icon {
+  font-size: 25px;
+}
+
 .pattern-card h4 {
   font-size: 18px;
   margin-bottom: 8px;
@@ -149,12 +363,206 @@ body {
   color: #64748b;
 }
 
+/* =========================
+   SEVERITY
+========================= */
+
+.severity {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.severity.high {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.severity.medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.severity.low {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.severity.unknown {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+/* =========================
+   CONFIDENCE
+========================= */
+
+.confidence {
+  text-align: right;
+}
+
+.confidence strong {
+  display: block;
+  font-size: 21px;
+  color: #4f46e5;
+}
+
+.confidence span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* =========================
+   EVIDENCE
+========================= */
+
+.evidence {
+  margin-top: 17px;
+  padding: 14px;
+  background: #f8fafc;
+  border-left: 4px solid #4f46e5;
+  border-radius: 7px;
+}
+
+.evidence span {
+  display: block;
+  margin-bottom: 6px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.evidence p {
+  color: #334155;
+  font-weight: 600;
+}
+
+/* =========================
+   DESCRIPTION
+========================= */
+
+.pattern-description {
+  margin-top: 15px;
+  line-height: 1.6;
+}
+
+/* =========================
+   NO PATTERNS
+========================= */
+
+.no-patterns {
+  text-align: center;
+  padding: 35px 20px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+}
+
+.no-patterns > div {
+  font-size: 35px;
+  color: #16a34a;
+  margin-bottom: 10px;
+}
+
+.no-patterns h3 {
+  margin-bottom: 7px;
+  color: #166534;
+}
+
+.no-patterns p {
+  color: #64748b;
+}
+
+/* =========================
+   ANALYSIS FALLBACK
+========================= */
+
+.analysis-data {
+  margin-top: 20px;
+  padding: 18px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+.analysis-data h4 {
+  margin-bottom: 10px;
+}
+
+.analysis-data pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+}
+
+/* =========================
+   SCAN AGAIN
+========================= */
+
+.scan-again {
+  display: block;
+  margin: 28px auto 0;
+  padding: 13px 22px;
+  border: 1px solid #4f46e5;
+  border-radius: 9px;
+  background: white;
+  color: #4f46e5;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.scan-again:hover {
+  background: #eef2ff;
+}
+
+/* =========================
+   FOOTER
+========================= */
+
+footer {
+  text-align: center;
+  padding: 25px 20px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* =========================
+   MOBILE
+========================= */
+
 @media (max-width: 700px) {
+
   .hero h1 {
     font-size: 36px;
   }
 
   .input-row {
     flex-direction: column;
+  }
+
+  .input-row button {
+    width: 100%;
+  }
+
+  .website-info {
+    grid-template-columns: 1fr;
+  }
+
+  .results-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pattern-top {
+    flex-direction: column;
+  }
+
+  .confidence {
+    text-align: left;
   }
 }
