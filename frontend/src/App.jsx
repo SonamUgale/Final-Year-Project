@@ -3,8 +3,8 @@ import "./App.css";
 
 function App() {
   const [url, setUrl] = useState("");
-  const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleScan = async () => {
@@ -13,496 +13,595 @@ function App() {
 
     const trimmedUrl = url.trim();
 
-    // Check empty URL
     if (!trimmedUrl) {
       setError("Please enter a website URL.");
       return;
     }
 
-    // Validate URL
-    let parsedUrl;
+    let validUrl;
 
     try {
-      parsedUrl = new URL(trimmedUrl);
+      validUrl = new URL(trimmedUrl);
+
+      if (!["http:", "https:"].includes(validUrl.protocol)) {
+        throw new Error();
+      }
     } catch {
-      setError(
-        "Please enter a valid URL, for example: https://example.com"
-      );
+      setError("Please enter a valid URL, for example https://example.com");
       return;
     }
 
-    // Only allow HTTP and HTTPS
-    if (
-      parsedUrl.protocol !== "http:" &&
-      parsedUrl.protocol !== "https:"
-    ) {
-      setError("Only HTTP and HTTPS websites can be scanned.");
-      return;
-    }
-
-    setScanning(true);
+    setLoading(true);
 
     try {
-      /*
-        Send the URL to the FastAPI backend.
+      const response = await fetch("http://127.0.0.1:8000/scan", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: trimmedUrl,
+        }),
+      });
 
-        Backend:
-        POST http://127.0.0.1:8000/scan
-      */
-
-      const response = await fetch(
-        "http://127.0.0.1:8000/scan",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
-            url: parsedUrl.href,
-          }),
-        }
-      );
-
-      // Check HTTP response
       if (!response.ok) {
-        throw new Error(
-          `Server returned ${response.status}`
-        );
+        throw new Error(`Server returned ${response.status}`);
       }
 
-      // Convert response to JSON
       const data = await response.json();
 
-      console.log("Backend response:", data);
-
       setResult(data);
-
     } catch (err) {
-      console.error("Scan error:", err);
+      console.error(err);
 
       setError(
-        "Unable to scan this website. Make sure the FastAPI backend is running."
+        "Unable to scan the website. Make sure the DarkShield backend is running."
       );
-
     } finally {
-      setScanning(false);
+      setLoading(false);
     }
   };
 
-  const scanAnotherWebsite = () => {
-    setResult(null);
-    setUrl("");
-    setError("");
+  const getRiskClass = (riskLevel) => {
+    if (!riskLevel) return "";
+
+    return riskLevel.toLowerCase();
   };
 
-  /*
-    The backend returns:
+  const getSeverityClass = (severity) => {
+    if (!severity) return "info";
 
-    {
-      website: {...},
-      security_analysis: {...}
-    }
+    return severity.toLowerCase();
+  };
 
-    These helpers make the frontend flexible if the
-    analyzer returns slightly different structures.
-  */
+  const security = result?.security_analysis;
+  const website = result?.website;
 
-  const website = result?.website || {};
-  const analysis = result?.security_analysis || {};
-
-  // Try common field names for title
-  const websiteTitle =
-    website.title ||
-    website.page_title ||
-    website.name ||
-    "Website";
-
-  // Try common field names for URL
-  const websiteUrl =
-    website.url ||
-    url;
-
-  /*
-    Patterns may come from the analyzer using different
-    names. We handle the common possibilities.
-  */
-
-  let patterns = [];
-
-  if (Array.isArray(analysis)) {
-    patterns = analysis;
-  } else if (Array.isArray(analysis.patterns)) {
-    patterns = analysis.patterns;
-  } else if (Array.isArray(analysis.detected_patterns)) {
-    patterns = analysis.detected_patterns;
-  }
+  const darkPatterns = security?.dark_pattern_analysis?.findings || [];
 
   return (
     <div className="app">
+      {/* ----------------------------------------- */}
+      {/* HEADER */}
+      {/* ----------------------------------------- */}
 
-      {/* HERO */}
       <header className="hero">
+        <div className="shield-icon">🛡️</div>
 
-        <div className="shield">
-          🛡️
-        </div>
-
-        <h1>
-          DarkShield AI
-        </h1>
+        <h1>DarkShield AI</h1>
 
         <p>
           AI-Powered Dark Pattern Detection
         </p>
 
+        <span className="hero-description">
+          Analyze websites for security risks and deceptive design patterns.
+        </span>
       </header>
 
       <main className="container">
 
-        {/* SCANNER */}
-        <section className="scan-box">
+        {/* ----------------------------------------- */}
+        {/* SCAN CARD */}
+        {/* ----------------------------------------- */}
 
-          <label htmlFor="url">
-            Enter Website URL
-          </label>
+        <section className="scan-card">
 
-          <div className="input-row">
+          <h2>Scan a Website</h2>
+
+          <p className="section-description">
+            Enter a website URL to analyze its security and potential dark
+            patterns.
+          </p>
+
+          <div className="input-group">
+
+            <label htmlFor="website-url">
+              Website URL
+            </label>
 
             <input
-              id="url"
-              type="url"
-              placeholder="https://example.com"
+              id="website-url"
+              type="text"
               value={url}
-              disabled={scanning}
-              onChange={(e) => {
-                setUrl(e.target.value);
-                setError("");
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleScan();
+                }
               }}
+              placeholder="https://example.com"
+              disabled={loading}
             />
-
-            <button
-              onClick={handleScan}
-              disabled={scanning}
-            >
-              {scanning
-                ? "Scanning..."
-                : "Scan Website"}
-            </button>
 
           </div>
 
-          {/* ERROR */}
-          {error && (
-            <div className="error-message">
-              <span>⚠️</span>
+          <button
+            className="scan-button"
+            onClick={handleScan}
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <span className="spinner"></span>
+                Scanning Website...
+              </>
+            ) : (
+              <>
+                🔍 Scan Website
+              </>
+            )}
+          </button>
 
-              <p>
-                {error}
-              </p>
+          {loading && (
+            <div className="loading-message">
+              <strong>Analyzing website...</strong>
+              <span>
+                Playwright is collecting website information. This may take
+                a few seconds.
+              </span>
             </div>
           )}
 
-          {/* LOADING */}
-          {scanning && (
-            <div className="loading">
-
-              <div className="loading-icon">
-                🔍
-              </div>
-
-              <strong>
-                Scanning website...
-              </strong>
-
-              <p>
-                DarkShield is communicating with the
-                website scanner.
-              </p>
-
-              <div className="progress-bar">
-                <div className="progress-fill"></div>
-              </div>
-
+          {error && (
+            <div className="error-message">
+              ⚠️ {error}
             </div>
           )}
 
         </section>
 
+
+        {/* ----------------------------------------- */}
         {/* RESULTS */}
-        {result && !scanning && (
+        {/* ----------------------------------------- */}
+
+        {result && website && security && (
+
           <section className="results">
 
-            {/* HEADER */}
-            <div className="results-header">
-
+            <div className="results-heading">
               <div>
-                <h2>
-                  Scan Results
-                </h2>
+                <span className="eyebrow">
+                  ANALYSIS COMPLETE
+                </span>
 
-                <p>
-                  Website analysis completed.
-                </p>
+                <h2>Scan Results</h2>
               </div>
 
-              <div className="scan-status">
-                ✓ Complete
-              </div>
-
+              <span className="live-badge">
+                ● LIVE SCAN
+              </span>
             </div>
 
+
+            {/* ----------------------------------------- */}
             {/* WEBSITE INFORMATION */}
-            <div className="website-info">
+            {/* ----------------------------------------- */}
 
-              <div className="info-item">
+            <div className="website-card">
 
-                <span>
-                  Website
+              <div className="website-info">
+
+                <span className="info-label">
+                  WEBSITE
                 </span>
 
                 <strong>
-                  {websiteUrl}
+                  {website.url}
                 </strong>
 
               </div>
 
-              <div className="info-item">
+              <div className="website-info">
 
-                <span>
-                  Page Title
+                <span className="info-label">
+                  PAGE TITLE
                 </span>
 
                 <strong>
-                  {websiteTitle}
-                </strong>
-
-              </div>
-
-              <div className="info-item">
-
-                <span>
-                  Patterns Detected
-                </span>
-
-                <strong>
-                  {patterns.length}
+                  {website.title || "Untitled Website"}
                 </strong>
 
               </div>
 
             </div>
 
+
+            {/* ----------------------------------------- */}
             {/* SECURITY SUMMARY */}
-            <div className="security-summary">
+            {/* ----------------------------------------- */}
 
-              <div className="summary-heading">
+            <div className="summary-grid">
 
-                <h3>
-                  Security Summary
-                </h3>
+              <div className="score-card">
 
-                <p>
-                  Results returned by the DarkShield
-                  analysis engine.
-                </p>
+                <div className="score-header">
+                  <span>Security Score</span>
+                  <span className="shield-small">🛡️</span>
+                </div>
+
+                <div
+                  className={`score-number ${getRiskClass(
+                    security.risk_level
+                  )}`}
+                >
+                  {security.security_score}
+                  <small>/100</small>
+                </div>
+
+                <div className="score-bar">
+                  <div
+                    className={`score-fill ${getRiskClass(
+                      security.risk_level
+                    )}`}
+                    style={{
+                      width: `${security.security_score}%`,
+                    }}
+                  ></div>
+                </div>
+
+                <div
+                  className={`risk-badge ${getRiskClass(
+                    security.risk_level
+                  )}`}
+                >
+                  {security.risk_level} Risk
+                </div>
 
               </div>
 
-              <div className="summary-total">
 
-                <strong>
-                  {patterns.length}
-                </strong>
+              <div className="stat-card">
 
-                <span>
-                  Potential Patterns Found
+                <span className="stat-icon">
+                  ⚠️
+                </span>
+
+                <span className="stat-number">
+                  {security.total_findings}
+                </span>
+
+                <span className="stat-label">
+                  Security Findings
+                </span>
+
+              </div>
+
+
+              <div className="stat-card">
+
+                <span className="stat-icon">
+                  🧠
+                </span>
+
+                <span className="stat-number">
+                  {security.dark_pattern_analysis?.total_dark_patterns || 0}
+                </span>
+
+                <span className="stat-label">
+                  Dark Patterns
                 </span>
 
               </div>
 
             </div>
 
-            {/* ANALYSIS */}
-            <div className="analysis-heading">
 
-              <h3>
-                AI Analysis
-              </h3>
+            {/* ----------------------------------------- */}
+            {/* SECURITY FINDINGS */}
+            {/* ----------------------------------------- */}
 
-              <p>
-                DarkShield analyzed the website
-                content for potential dark patterns.
-              </p>
+            <section className="analysis-section">
 
-            </div>
+              <div className="section-title">
 
-            {/* PATTERNS */}
-            {patterns.length > 0 ? (
+                <div>
+                  <span className="eyebrow">
+                    SECURITY
+                  </span>
 
-              <div className="patterns">
+                  <h3>
+                    Security Findings
+                  </h3>
+                </div>
 
-                {patterns.map((pattern, index) => {
+                <span className="count-badge">
+                  {security.findings?.length || 0}
+                </span>
 
-                  const type =
-                    pattern.type ||
-                    pattern.name ||
-                    pattern.pattern ||
-                    `Pattern ${index + 1}`;
+              </div>
 
-                  const description =
-                    pattern.description ||
-                    pattern.reason ||
-                    pattern.explanation ||
-                    "Potential dark pattern detected.";
 
-                  const severity =
-                    pattern.severity ||
-                    "Unknown";
+              {security.findings?.length > 0 ? (
 
-                  const confidence =
-                    pattern.confidence;
+                <div className="finding-list">
 
-                  const evidence =
-                    pattern.evidence ||
-                    pattern.text;
+                  {security.findings.map((finding, index) => (
 
-                  return (
                     <div
-                      className="pattern-card"
-                      key={index}
+                      className="finding-card"
+                      key={`${finding.issue}-${index}`}
                     >
 
-                      <div className="pattern-top">
+                      <div className="finding-icon">
+                        {finding.severity === "Critical"
+                          ? "🚨"
+                          : finding.severity === "High"
+                          ? "🔴"
+                          : finding.severity === "Medium"
+                          ? "🟠"
+                          : finding.severity === "Low"
+                          ? "🟡"
+                          : "ℹ️"}
+                      </div>
 
-                        <div className="pattern-title">
+                      <div className="finding-content">
 
-                          <div className="pattern-icon">
-                            ⚠️
-                          </div>
+                        <div className="finding-top">
 
-                          <div>
+                          <h4>
+                            {finding.issue}
+                          </h4>
 
-                            <h4>
-                              {type}
-                            </h4>
-
-                            <span
-                              className={`severity ${String(
-                                severity
-                              ).toLowerCase()}`}
-                            >
-                              {severity} Severity
-                            </span>
-
-                          </div>
+                          <span
+                            className={`severity ${getSeverityClass(
+                              finding.severity
+                            )}`}
+                          >
+                            {finding.severity}
+                          </span>
 
                         </div>
 
-                        {confidence !== undefined && (
-                          <div className="confidence">
-
-                            <strong>
-                              {confidence}%
-                            </strong>
-
-                            <span>
-                              Confidence
-                            </span>
-
-                          </div>
-                        )}
+                        <p>
+                          {finding.description}
+                        </p>
 
                       </div>
 
-                      {evidence && (
-                        <div className="evidence">
-
-                          <span>
-                            Detected Evidence
-                          </span>
-
-                          <p>
-                            {evidence}
-                          </p>
-
-                        </div>
-                      )}
-
-                      <p className="pattern-description">
-                        {description}
-                      </p>
-
                     </div>
-                  );
-                })}
 
-              </div>
-
-            ) : (
-
-              <div className="no-patterns">
-
-                <div>
-                  ✓
-                </div>
-
-                <h3>
-                  No Dark Patterns Detected
-                </h3>
-
-                <p>
-                  The current analysis did not identify
-                  any potential dark patterns.
-                </p>
-
-              </div>
-
-            )}
-
-            {/* RAW ANALYSIS FALLBACK */}
-            {!Array.isArray(analysis) &&
-              patterns.length === 0 && (
-                <div className="analysis-data">
-
-                  <h4>
-                    Analysis Result
-                  </h4>
-
-                  <pre>
-                    {JSON.stringify(
-                      analysis,
-                      null,
-                      2
-                    )}
-                  </pre>
+                  ))}
 
                 </div>
+
+              ) : (
+
+                <div className="empty-state">
+                  <span>✅</span>
+                  <strong>No security findings detected.</strong>
+                </div>
+
               )}
 
-            {/* SCAN AGAIN */}
-            <button
-              className="scan-again"
-              onClick={scanAnotherWebsite}
-            >
-              ↻ Scan Another Website
-            </button>
+            </section>
+
+
+            {/* ----------------------------------------- */}
+            {/* DARK PATTERNS */}
+            {/* ----------------------------------------- */}
+
+            <section className="analysis-section">
+
+              <div className="section-title">
+
+                <div>
+                  <span className="eyebrow">
+                    DARK PATTERN DETECTION
+                  </span>
+
+                  <h3>
+                    Potential Dark Patterns
+                  </h3>
+                </div>
+
+                <span className="count-badge purple">
+                  {darkPatterns.length}
+                </span>
+
+              </div>
+
+
+              {darkPatterns.length > 0 ? (
+
+                <div className="dark-pattern-grid">
+
+                  {darkPatterns.map((pattern, index) => (
+
+                    <div
+                      className="pattern-card"
+                      key={`${pattern.pattern}-${index}`}
+                    >
+
+                      <div className="pattern-header">
+
+                        <div className="pattern-icon">
+                          ⚠️
+                        </div>
+
+                        <div>
+
+                          <h4>
+                            {pattern.pattern}
+                          </h4>
+
+                          <span
+                            className={`severity ${getSeverityClass(
+                              pattern.severity
+                            )}`}
+                          >
+                            {pattern.severity}
+                          </span>
+
+                        </div>
+
+                      </div>
+
+                      <p className="pattern-description">
+                        {pattern.description}
+                      </p>
+
+
+                      {pattern.evidence &&
+                        pattern.evidence.length > 0 && (
+
+                          <div className="evidence">
+
+                            <span className="evidence-label">
+                              DETECTED EVIDENCE
+                            </span>
+
+                            {pattern.evidence.map(
+                              (item, evidenceIndex) => (
+
+                                <div
+                                  className="evidence-item"
+                                  key={evidenceIndex}
+                                >
+                                  "{item}"
+                                </div>
+
+                              )
+                            )}
+
+                          </div>
+
+                        )}
+
+                    </div>
+
+                  ))}
+
+                </div>
+
+              ) : (
+
+                <div className="empty-state success">
+                  <span>🛡️</span>
+                  <strong>
+                    No known dark patterns detected.
+                  </strong>
+
+                  <p>
+                    The current detection engine did not identify any
+                    configured dark-pattern indicators.
+                  </p>
+                </div>
+
+              )}
+
+            </section>
+
+
+            {/* ----------------------------------------- */}
+            {/* WEBSITE STRUCTURE */}
+            {/* ----------------------------------------- */}
+
+            <section className="analysis-section">
+
+              <div className="section-title">
+
+                <div>
+                  <span className="eyebrow">
+                    WEBSITE STRUCTURE
+                  </span>
+
+                  <h3>
+                    Extracted Elements
+                  </h3>
+                </div>
+
+              </div>
+
+              <div className="element-grid">
+
+                <div className="element-stat">
+                  <strong>
+                    {website.links?.length || 0}
+                  </strong>
+
+                  <span>
+                    Links
+                  </span>
+                </div>
+
+                <div className="element-stat">
+                  <strong>
+                    {website.buttons?.length || 0}
+                  </strong>
+
+                  <span>
+                    Buttons
+                  </span>
+                </div>
+
+                <div className="element-stat">
+                  <strong>
+                    {website.inputs?.length || 0}
+                  </strong>
+
+                  <span>
+                    Input Fields
+                  </span>
+                </div>
+
+                <div className="element-stat">
+                  <strong>
+                    {Object.keys(website.headers || {}).length}
+                  </strong>
+
+                  <span>
+                    HTTP Headers
+                  </span>
+                </div>
+
+              </div>
+
+            </section>
+
+
+            {/* ----------------------------------------- */}
+            {/* FOOTER */}
+            {/* ----------------------------------------- */}
+
+            <div className="results-footer">
+
+              <span>
+                DarkShield AI
+              </span>
+
+              <span>
+                Security analysis powered by FastAPI + Playwright
+              </span>
+
+            </div>
 
           </section>
+
         )}
 
       </main>
-
-      <footer>
-
-        <p>
-          DarkShield AI • Website Transparency &
-          Dark Pattern Detection
-        </p>
-
-      </footer>
-
     </div>
   );
 }
