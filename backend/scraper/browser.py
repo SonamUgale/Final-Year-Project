@@ -1,69 +1,206 @@
+import os
+from urllib.parse import urlparse
+
 from playwright.sync_api import sync_playwright
+
+
+def find_edge_executable():
+    """
+    Find Microsoft Edge installed on Windows.
+    """
+
+    possible_paths = [
+        os.path.expandvars(
+            r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+        ),
+        os.path.expandvars(
+            r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
+        ),
+        os.path.expandvars(
+            r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"
+        ),
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+
+    return None
 
 
 def scrape_website(url: str):
 
+    edge_path = find_edge_executable()
+
+    if not edge_path:
+        raise RuntimeError(
+            "Microsoft Edge was not found on this computer. "
+            "Please install Microsoft Edge."
+        )
+
     with sync_playwright() as p:
 
-        browser = p.chromium.launch(
-            headless=True,
-            channel="msedge"
-        )
+        browser = None
 
-        page = browser.new_page()
+        try:
+            # Use the actual Microsoft Edge installed on the computer.
+            browser = p.chromium.launch(
+                executable_path=edge_path,
+                headless=True,
+                args=[
+                    "--disable-gpu",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ],
+            )
 
-        response = page.goto(
-            url,
-            wait_until="domcontentloaded",
-            timeout=30000
-        )
+            page = browser.new_page(
+                viewport={
+                    "width": 1440,
+                    "height": 900,
+                },
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/131.0.0.0 Safari/537.36"
+                ),
+            )
 
-        headers = {}
+            # Load the website.
+            response = page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
 
-        if response:
-            headers = response.all_headers()
+            # Give JavaScript-based websites a short time to render.
+            try:
+                page.wait_for_load_state(
+                    "networkidle",
+                    timeout=10000,
+                )
+            except Exception:
+                # Some websites never reach networkidle.
+                pass
 
-        result = {
-            "url": url,
-            "title": page.title(),
-            "text": page.locator("body").inner_text(),
+            # HTTP response headers.
+            headers = {}
 
-            "links": [],
+            if response:
+                try:
+                    headers = response.all_headers()
+                except Exception:
+                    headers = {}
 
-            "buttons": [],
+            # Basic website information.
+            result = {
+                "url": url,
+                "title": page.title(),
+                "text": "",
+                "links": [],
+                "buttons": [],
+                "inputs": [],
+                "headers": headers,
+            }
 
-            "inputs": [],
+            # Extract page text.
+            try:
+                result["text"] = page.locator("body").inner_text(
+                    timeout=10000
+                )
+            except Exception:
+                result["text"] = ""
 
-            "headers": headers
-        }
+            # Extract links.
+            try:
+                links = page.locator("a").all()
 
-        links = page.locator("a").all()
+                for link in links:
+                    try:
+                        text = link.inner_text().strip()
+                    except Exception:
+                        text = ""
 
-        for link in links:
-            text = link.inner_text().strip()
-            href = link.get_attribute("href")
+                    try:
+                        href = link.get_attribute("href")
+                    except Exception:
+                        href = None
 
-            result["links"].append({
-                "text": text,
-                "href": href
-            })
+                    result["links"].append(
+                        {
+                            "text": text,
+                            "href": href,
+                        }
+                    )
 
-        buttons = page.locator("button").all()
+            except Exception:
+                pass
 
-        for button in buttons:
-            result["buttons"].append({
-                "text": button.inner_text().strip()
-            })
+            # Extract buttons.
+            try:
+                buttons = page.locator("button").all()
 
-        inputs = page.locator("input").all()
+                for button in buttons:
+                    try:
+                        button_text = button.inner_text().strip()
+                    except Exception:
+                        button_text = ""
 
-        for input_field in inputs:
-            result["inputs"].append({
-                "type": input_field.get_attribute("type"),
-                "name": input_field.get_attribute("name"),
-                "placeholder": input_field.get_attribute("placeholder")
-            })
+                    result["buttons"].append(
+                        {
+                            "text": button_text,
+                        }
+                    )
 
-        browser.close()
+            except Exception:
+                pass
 
-        return result
+            # Extract input fields.
+            try:
+                inputs = page.locator("input").all()
+
+                for input_field in inputs:
+
+                    try:
+                        input_type = input_field.get_attribute("type")
+                    except Exception:
+                        input_type = None
+
+                    try:
+                        input_name = input_field.get_attribute("name")
+                    except Exception:
+                        input_name = None
+
+                    try:
+                        placeholder = input_field.get_attribute(
+                            "placeholder"
+                        )
+                    except Exception:
+                        placeholder = None
+
+                    result["inputs"].append(
+                        {
+                            "type": input_type,
+                            "name": input_name,
+                            "placeholder": placeholder,
+                        }
+                    )
+
+            except Exception:
+                pass
+
+            return result
+
+        except Exception as error:
+
+            raise RuntimeError(
+                f"Unable to scan the website: {str(error)}"
+            ) from error
+
+        finally:
+
+            if browser:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
