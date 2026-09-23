@@ -1,0 +1,90 @@
+[
+  {
+    "url": "file:///C:/Users/Amruta Tarage/OneDrive/Documents/projects/Final-Year-Project/test_site/index.html",
+    "timestamp": "2026-09-22T11:45:40.300199+00:00",
+    "security": {
+      "score": 5,
+      "risk_level": "High",
+      "findings_count": 7
+    },
+    "dark_patterns": {
+      "risk_score": 58,
+      "risk_level": "Medium",
+      "patterns_count": 4,
+      "detected_patterns": [
+        {
+          "pattern": "Urgency or Scarcity",
+          "severity": "Medium",
+          "confidence": 0.999,
+          "detection_method": "Hybrid (Rules + AI)",
+          "element_type": "text_block",
+          "evidence": [
+            "ends today",
+            "limited time",
+            "hurry",
+            "Limited time offer!",
+            "Hurry! This offer ends today!",
+            "This offer ends today!",
+            "Only 2 items left!"
+          ],
+          "potential_classification": "Potential Urgency or Scarcity detected"
+        },
+        {
+          "pattern": "Confirmshaming",
+          "severity": "Medium",
+          "confidence": 0.999,
+          "detection_method": "Hybrid (Rules + AI)",
+          "element_type": "text_block",
+          "evidence": [
+            "no thanks",
+            "i don't want",
+            "Special Offer!",
+            "No thanks, I don't want to save money."
+          ],
+          "potential_classification": "Potential Confirmshaming detected"
+        },
+        {
+          "pattern": "Aggressive Call To Action",
+          "severity": "Medium",
+          "confidence": 0.999,
+          "detection_method": "Hybrid (Rules + AI)",
+          "element_type": "text_block",
+          "evidence": [
+            "buy now",
+            "sign up now",
+            "subscribe now",
+            "Special Offer!",
+            "No thanks, I don't want to save money."
+          ],
+          "potential_classification": "Potential Aggressive Call To Action detected"
+        },
+        {
+          "pattern": "Potential Forced Registration",
+          "severity": "Medium",
+          "confidence": 0.75,
+          "detection_method": "Rule-Based",
+          "element_type": "form_input",
+          "evidence": [
+            "sign up now"
+          ],
+          "potential_classification": "Potential Potential Forced Registration detected"
+        }
+      ]
+    }
+  },
+  {
+    "url": "https://example.com",
+    "timestamp": "2026-09-22T11:45:47.415401+00:00",
+    "security": {
+      "score": 65,
+      "risk_level": "Medium",
+      "findings_count": 5
+    },
+    "dark_patterns": {
+      "risk_score": 0,
+      "risk_level": "None",
+      "patterns_count": 0,
+      "detected_patterns": []
+    }
+  }
+]

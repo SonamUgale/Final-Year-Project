@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# DarkShield dynamic scan data
+backend/data/scans/
+backend/data/scan_history_index.json
+
