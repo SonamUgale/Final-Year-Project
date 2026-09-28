@@ -74,11 +74,20 @@ def save_scan(scan_data: Dict[str, Any]) -> str:
     has_screenshot = bool(website.get("screenshot_b64"))
 
     # Create index summary item
+    scan_status = scan_data.get("scan_status", website.get("scan_status", "complete"))
+    navigation_status = scan_data.get("navigation_status", website.get("navigation_status", "success"))
+    warning = scan_data.get("warning", website.get("warning"))
+    duration = scan_data.get("scan_duration_seconds", website.get("scan_duration_seconds", 0))
+
     summary_item = {
         "scan_id": scan_id,
         "timestamp": now.isoformat(),
         "url": url,
         "title": title,
+        "scan_status": scan_status,
+        "navigation_status": navigation_status,
+        "warning": warning,
+        "scan_duration_seconds": duration,
         "security_score": security_score,
         "security_risk_level": security_risk_level,
         "dark_risk_score": dark_risk_score,

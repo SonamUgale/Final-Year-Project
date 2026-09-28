@@ -298,6 +298,331 @@ class TestScanHistoryAndReport(unittest.TestCase):
         self.assertIsNone(get_scan_by_id(scan_id))
 
 
+from unittest.mock import MagicMock, patch
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
+from backend.scraper.browser import scrape_website, _classify_playwright_error, _detect_bot_or_blocked
+from backend.app import scan_website, WebsiteRequest
+
+
+class TestResilientScanner(unittest.TestCase):
+    """Test resilient scraping, navigation timeout recovery, error handling, and redirects."""
+
+    def test_error_classification(self):
+        etype, emsg = _classify_playwright_error("net::ERR_NAME_NOT_RESOLVED")
+        self.assertEqual(etype, "dns_failure")
+
+        etype, emsg = _classify_playwright_error("net::ERR_CONNECTION_REFUSED")
+        self.assertEqual(etype, "connection_refused")
+
+        etype, emsg = _classify_playwright_error("net::ERR_CONNECTION_RESET")
+        self.assertEqual(etype, "connection_reset")
+
+        etype, emsg = _classify_playwright_error("Timeout 20000ms exceeded")
+        self.assertEqual(etype, "navigation_timeout")
+
+    def test_bot_detection_helper(self):
+        self.assertTrue(_detect_bot_or_blocked("Robot Check", "Enter letters below", 200))
+        self.assertTrue(_detect_bot_or_blocked("Normal Title", "Checking your browser before accessing", 200))
+        self.assertTrue(_detect_bot_or_blocked("Access Denied", "403 Forbidden", 403))
+        self.assertFalse(_detect_bot_or_blocked("Acme Store", "Welcome to our shop", 200))
+
+    @patch("backend.scraper.browser.find_edge_executable", return_value="C:\\dummy\\msedge.exe")
+    @patch("backend.scraper.browser.sync_playwright")
+    def test_successful_navigation(self, mock_playwright, mock_edge):
+        mock_p = MagicMock()
+        mock_playwright.return_value.__enter__.return_value = mock_p
+        mock_browser = MagicMock()
+        mock_p.chromium.launch.return_value = mock_browser
+        mock_context = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+        mock_page = MagicMock()
+        mock_context.new_page.return_value = mock_page
+
+        mock_page.url = "https://example.com"
+        mock_page.title.return_value = "Example Domain"
+        mock_page.goto.return_value = MagicMock(all_headers=lambda: {"server": "ECS"}, status=200)
+
+        # Mock page.evaluate for batch element extraction
+        def fake_evaluate(script):
+            if "links" in script and "buttons" in script:
+                return {
+                    "links": [{"text": "More info", "href": "https://iana.org"}],
+                    "buttons": [{"text": "Click"}],
+                    "inputs": [{"type": "text", "name": "search", "placeholder": "Search"}]
+                }
+            elif "banner_detected" in script:
+                return {"banner_detected": False}
+            elif "innerText" in script:
+                return "This domain is for use in illustrative examples in documents."
+            return []
+
+        mock_page.evaluate.side_effect = fake_evaluate
+
+        res = scrape_website("https://example.com")
+        self.assertEqual(res["scan_status"], "complete")
+        self.assertEqual(res["navigation_status"], "success")
+        self.assertEqual(res["requested_url"], "https://example.com")
+        self.assertEqual(res["final_url"], "https://example.com")
+        self.assertEqual(res["title"], "Example Domain")
+        self.assertEqual(len(res["links"]), 1)
+        self.assertEqual(len(res["buttons"]), 1)
+        self.assertEqual(len(res["inputs"]), 1)
+
+    @patch("backend.scraper.browser.find_edge_executable", return_value="C:\\dummy\\msedge.exe")
+    @patch("backend.scraper.browser.sync_playwright")
+    def test_navigation_timeout_partial_recovery(self, mock_playwright, mock_edge):
+        """When navigation times out, but DOM content exists, status must be partial."""
+        mock_p = MagicMock()
+        mock_playwright.return_value.__enter__.return_value = mock_p
+        mock_browser = MagicMock()
+        mock_p.chromium.launch.return_value = mock_browser
+        mock_context = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+        mock_page = MagicMock()
+        mock_context.new_page.return_value = mock_page
+
+        mock_page.url = "https://slow-site.com"
+        mock_page.title.return_value = "Slow Loading Portal"
+        # Simulate timeout on page.goto
+        mock_page.goto.side_effect = PlaywrightTimeoutError("Page.goto: Timeout 20000ms exceeded.")
+
+        def fake_evaluate(script):
+            if "document.body.innerText.trim().length" in script:
+                return 450  # DOM text exists!
+            elif "document.body.innerText" in script:
+                return "Hurry! Limited stock available today only."
+            elif "links" in script and "buttons" in script:
+                return {"links": [], "buttons": [{"text": "Buy Now"}], "inputs": []}
+            return []
+
+        mock_page.evaluate.side_effect = fake_evaluate
+
+        res = scrape_website("https://slow-site.com")
+        self.assertEqual(res["scan_status"], "partial")
+        self.assertEqual(res["navigation_status"], "timeout")
+        self.assertIn("navigation timeout", res["warning"])
+        self.assertEqual(res["title"], "Slow Loading Portal")
+        self.assertIn("Hurry", res["text"])
+
+    @patch("backend.scraper.browser.find_edge_executable", return_value="C:\\dummy\\msedge.exe")
+    @patch("backend.scraper.browser.sync_playwright")
+    def test_navigation_timeout_blank_page(self, mock_playwright, mock_edge):
+        """When navigation times out and page has 0 content, status must be failed."""
+        mock_p = MagicMock()
+        mock_playwright.return_value.__enter__.return_value = mock_p
+        mock_browser = MagicMock()
+        mock_p.chromium.launch.return_value = mock_browser
+        mock_context = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+        mock_page = MagicMock()
+        mock_context.new_page.return_value = mock_page
+
+        mock_page.goto.side_effect = PlaywrightTimeoutError("Page.goto: Timeout 20000ms exceeded.")
+        mock_page.evaluate.return_value = 0  # Completely empty
+
+        res = scrape_website("https://unreachable-timeout.com")
+        self.assertEqual(res["scan_status"], "failed")
+        self.assertEqual(res["navigation_status"], "timeout")
+        self.assertEqual(res["error_type"], "navigation_timeout")
+
+    @patch("backend.scraper.browser.find_edge_executable", return_value="C:\\dummy\\msedge.exe")
+    @patch("backend.scraper.browser.sync_playwright")
+    def test_dns_failure(self, mock_playwright, mock_edge):
+        mock_p = MagicMock()
+        mock_playwright.return_value.__enter__.return_value = mock_p
+        mock_browser = MagicMock()
+        mock_p.chromium.launch.return_value = mock_browser
+        mock_context = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+        mock_page = MagicMock()
+        mock_context.new_page.return_value = mock_page
+
+        mock_page.goto.side_effect = PlaywrightError("net::ERR_NAME_NOT_RESOLVED")
+        mock_page.evaluate.return_value = 0
+
+        res = scrape_website("https://nonexistent-domain-xyz-12345.com")
+        self.assertEqual(res["scan_status"], "failed")
+        self.assertEqual(res["error_type"], "dns_failure")
+        self.assertIn("DNS failure", res["message"])
+
+    @patch("backend.scraper.browser.find_edge_executable", return_value="C:\\dummy\\msedge.exe")
+    @patch("backend.scraper.browser.sync_playwright")
+    def test_redirect_handling(self, mock_playwright, mock_edge):
+        """Normal redirects should preserve requested_url and final_url without failing."""
+        mock_p = MagicMock()
+        mock_playwright.return_value.__enter__.return_value = mock_p
+        mock_browser = MagicMock()
+        mock_p.chromium.launch.return_value = mock_browser
+        mock_context = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+        mock_page = MagicMock()
+        mock_context.new_page.return_value = mock_page
+
+        # Initial requested vs final redirected URL
+        mock_page.url = "https://destination.org/welcome"
+        mock_page.title.return_value = "Destination Home"
+        mock_page.goto.return_value = MagicMock(all_headers=lambda: {}, status=200)
+        mock_page.evaluate.return_value = "Welcome to Destination"
+
+        res = scrape_website("http://short.link")
+        self.assertEqual(res["scan_status"], "complete")
+        self.assertEqual(res["requested_url"], "http://short.link")
+        self.assertEqual(res["final_url"], "https://destination.org/welcome")
+        self.assertEqual(res["url"], "https://destination.org/welcome")
+
+    @patch("backend.scraper.browser.find_edge_executable", return_value="C:\\dummy\\msedge.exe")
+    @patch("backend.scraper.browser.sync_playwright")
+    def test_anti_bot_detection(self, mock_playwright, mock_edge):
+        mock_p = MagicMock()
+        mock_playwright.return_value.__enter__.return_value = mock_p
+        mock_browser = MagicMock()
+        mock_p.chromium.launch.return_value = mock_browser
+        mock_context = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+        mock_page = MagicMock()
+        mock_context.new_page.return_value = mock_page
+
+        mock_page.url = "https://amazon.example"
+        mock_page.title.return_value = "Robot Check"
+        mock_page.goto.return_value = MagicMock(all_headers=lambda: {}, status=200)
+        mock_page.evaluate.return_value = "Enter the characters you see below to continue."
+
+        res = scrape_website("https://amazon.example")
+        self.assertEqual(res["scan_status"], "blocked_or_interaction_required")
+        self.assertEqual(res["navigation_status"], "blocked_or_interaction_required")
+        self.assertIn("anti-bot challenge", res["warning"])
+
+    @patch("backend.scraper.browser.find_edge_executable", return_value="C:\\dummy\\msedge.exe")
+    @patch("backend.scraper.browser.sync_playwright")
+    def test_independent_extraction_fault_tolerance(self, mock_playwright, mock_edge):
+        """Title or screenshot failure must not crash link/button extraction."""
+        mock_p = MagicMock()
+        mock_playwright.return_value.__enter__.return_value = mock_p
+        mock_browser = MagicMock()
+        mock_p.chromium.launch.return_value = mock_browser
+        mock_context = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+        mock_page = MagicMock()
+        mock_context.new_page.return_value = mock_page
+
+        mock_page.url = "https://tolerant-site.com"
+        mock_page.title.side_effect = Exception("Title extraction IPC error")
+        mock_page.screenshot.side_effect = Exception("Screenshot timeout")
+
+        def fake_evaluate(script):
+            if "links" in script and "buttons" in script:
+                return {"links": [{"text": "Home", "href": "/"}], "buttons": [], "inputs": []}
+            elif "innerText" in script:
+                return "Some content text"
+            return []
+
+        mock_page.evaluate.side_effect = fake_evaluate
+
+        res = scrape_website("https://tolerant-site.com")
+        self.assertEqual(res["scan_status"], "complete")
+        self.assertEqual(res["title"], "Untitled Website")
+        self.assertIsNone(res["screenshot_b64"])
+        self.assertEqual(len(res["links"]), 1)
+
+
+class TestScanAPIEndpointContract(unittest.TestCase):
+    """Test FastAPI /scan endpoint contract for complete, partial, and failed states."""
+
+    @patch("backend.app.scrape_website")
+    def test_api_successful_scan(self, mock_scrape):
+        mock_scrape.return_value = {
+            "scan_status": "complete",
+            "navigation_status": "success",
+            "requested_url": "https://example.com",
+            "final_url": "https://example.com",
+            "url": "https://example.com",
+            "title": "Example Domain",
+            "text": "This domain is established to be used for illustrative examples.",
+            "links": [{"text": "More information...", "href": "https://www.iana.org/domains/example"}],
+            "buttons": [],
+            "inputs": [],
+            "headers": {"content-security-policy": "default-src 'self'"},
+            "dom_elements": [],
+            "screenshot_b64": None,
+            "cookie_consent": {"banner_detected": False},
+            "scan_duration_seconds": 1.25,
+            "warning": None,
+            "error_type": None,
+            "message": None,
+        }
+
+        response = scan_website(WebsiteRequest(url="https://example.com"))
+        self.assertEqual(response["scan_status"], "complete")
+        self.assertEqual(response["navigation_status"], "success")
+        self.assertIn("security_analysis", response)
+        self.assertIn("dark_pattern_analysis", response)
+        self.assertIn("ai_analysis", response)
+        self.assertTrue(response["scan_id"].startswith("scan_"))
+
+    @patch("backend.app.scrape_website")
+    def test_api_partial_scan(self, mock_scrape):
+        mock_scrape.return_value = {
+            "scan_status": "partial",
+            "navigation_status": "timeout",
+            "requested_url": "https://heavy-site.com",
+            "final_url": "https://heavy-site.com",
+            "url": "https://heavy-site.com",
+            "title": "Heavy Site",
+            "text": "Only 2 items left in stock!",
+            "links": [],
+            "buttons": [{"text": "Checkout"}],
+            "inputs": [],
+            "headers": {},
+            "dom_elements": [{"text": "Only 2 items left in stock!", "element_type": "heading"}],
+            "screenshot_b64": None,
+            "cookie_consent": {},
+            "scan_duration_seconds": 18.5,
+            "warning": "The page did not finish loading within the navigation timeout, but available content was analyzed.",
+            "error_type": None,
+            "message": None,
+        }
+
+        response = scan_website(WebsiteRequest(url="https://heavy-site.com"))
+        self.assertEqual(response["scan_status"], "partial")
+        self.assertEqual(response["navigation_status"], "timeout")
+        self.assertIn("available content was analyzed", response["warning"])
+        # Analyzers should still have executed!
+        self.assertGreaterEqual(response["security_analysis"]["security_score"], 0)
+        self.assertTrue(response["scan_id"].startswith("scan_"))
+
+    @patch("backend.app.scrape_website")
+    def test_api_failed_scan(self, mock_scrape):
+        mock_scrape.return_value = {
+            "scan_status": "failed",
+            "navigation_status": "failed",
+            "requested_url": "https://dead-server.invalid",
+            "final_url": "https://dead-server.invalid",
+            "url": "https://dead-server.invalid",
+            "title": "Website Unavailable",
+            "text": "",
+            "links": [],
+            "buttons": [],
+            "inputs": [],
+            "headers": {},
+            "dom_elements": [],
+            "screenshot_b64": None,
+            "cookie_consent": {},
+            "scan_duration_seconds": 0.5,
+            "warning": None,
+            "error_type": "dns_failure",
+            "message": "Domain name could not be resolved (DNS failure). Please verify the URL.",
+        }
+
+        # Must return structured 200 rather than raising an unhandled 500 exception
+        response = scan_website(WebsiteRequest(url="https://dead-server.invalid"))
+        self.assertEqual(response["scan_status"], "failed")
+        self.assertEqual(response["navigation_status"], "failed")
+        self.assertEqual(response["error_type"], "dns_failure")
+        self.assertIn("DNS failure", response["message"])
+        self.assertTrue(response["scan_id"].startswith("scan_"))
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

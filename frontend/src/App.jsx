@@ -131,8 +131,9 @@ function App() {
 
     setLoading(true);
 
+    let response;
     try {
-      const response = await fetch(`${API_BASE}/scan`, {
+      response = await fetch(`${API_BASE}/scan`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -141,19 +142,37 @@ function App() {
           url: trimmedUrl,
         }),
       });
+    } catch (err) {
+      console.error(err);
+      setError(
+        "Unable to connect to the DarkShield backend server. Please make sure the backend is running at http://127.0.0.1:8000."
+      );
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+        setError(data.detail || data.message || `Server returned ${response.status}`);
+        setLoading(false);
+        return;
       }
 
-      const data = await response.json();
+      if (data.scan_status === "failed") {
+        setError(`Unable to analyze this website: ${data.message || "Failed to load the website."}`);
+        setResult(data);
+        fetchHistory();
+        setLoading(false);
+        return;
+      }
+
       setResult(data);
       fetchHistory(); // Refresh history with new scan
     } catch (err) {
       console.error(err);
-      setError(
-        "Unable to scan the website. Make sure the DarkShield backend is running."
-      );
+      setError("Unable to process the scan response from the server.");
     } finally {
       setLoading(false);
     }
@@ -229,6 +248,14 @@ function App() {
 
   const security = result?.security_analysis;
   const website = result?.website;
+  const scanStatus = result?.scan_status || website?.scan_status || "complete";
+  const navStatus = result?.navigation_status || website?.navigation_status || "success";
+  const scanWarning = result?.warning || website?.warning;
+  const scanDuration = result?.scan_duration_seconds || website?.scan_duration_seconds;
+  const requestedUrl = result?.requested_url || website?.requested_url || website?.url;
+  const finalUrl = result?.final_url || website?.final_url || website?.url;
+  const isRedirected = Boolean(finalUrl && requestedUrl && finalUrl !== requestedUrl);
+
   const darkPatternsData = result?.dark_pattern_analysis || security?.dark_pattern_analysis;
   const darkPatterns = darkPatternsData?.findings || [];
   const darkRiskScore = darkPatternsData?.risk_score ?? 0;
@@ -318,6 +345,11 @@ function App() {
                         <span>{item.timestamp ? new Date(item.timestamp).toLocaleString() : item.scan_id}</span>
                       </div>
                       <div className="history-badges">
+                        {item.scan_status && item.scan_status !== "complete" && (
+                          <span className={`pill-status status-${item.scan_status}`}>
+                            {item.scan_status === "partial" ? "⚠️ Partial" : item.scan_status === "failed" ? "❌ Failed" : "🛡️ Blocked"}
+                          </span>
+                        )}
                         <span className={`pill-score sec-${getRiskClass(item.security_risk_level)}`}>
                           🔒 Sec: {item.security_score}
                         </span>
@@ -426,7 +458,9 @@ function App() {
             {/* RESULTS ACTION BAR */}
             <div className="results-heading">
               <div>
-                <span className="eyebrow">AUDIT COMPLETE</span>
+                <span className={`eyebrow eyebrow-${scanStatus}`}>
+                  {scanStatus === "complete" ? "SCAN COMPLETE" : scanStatus === "partial" ? "PARTIAL SCAN" : scanStatus === "blocked_or_interaction_required" ? "SCAN RESTRICTED" : "AUDIT REPORT"}
+                </span>
                 <h2>Scan & Intelligence Report</h2>
               </div>
               <div className="results-actions">
@@ -446,20 +480,62 @@ function App() {
                     )}
                   </button>
                 )}
-                <span className="live-badge">● LIVE AUDIT</span>
+                <span className={`live-badge badge-${scanStatus}`}>
+                  ● {scanStatus === "complete" ? "LIVE AUDIT" : scanStatus === "partial" ? "PARTIAL AUDIT" : "RESTRICTED AUDIT"}
+                </span>
               </div>
             </div>
+
+            {/* STATUS / WARNING BANNER */}
+            {scanStatus === "partial" && (
+              <div className="scan-status-alert alert-partial">
+                <div className="alert-icon">⚠️</div>
+                <div className="alert-body">
+                  <strong>Partial Scan Notice</strong>
+                  <p>{scanWarning || "Partial scan: the website was slow to finish loading, but available content was analyzed."}</p>
+                </div>
+              </div>
+            )}
+            {scanStatus === "blocked_or_interaction_required" && (
+              <div className="scan-status-alert alert-blocked">
+                <div className="alert-icon">🛡️</div>
+                <div className="alert-body">
+                  <strong>Access Restricted / Anti-Bot Challenge</strong>
+                  <p>{scanWarning || "This website presented an anti-bot challenge or requires human interaction. Analysis was restricted to accessible content."}</p>
+                </div>
+              </div>
+            )}
+            {scanStatus === "complete" && (
+              <div className="scan-status-alert alert-complete">
+                <div className="alert-icon">✓</div>
+                <div className="alert-body">
+                  <strong>Scan completed successfully</strong>
+                  <p>Full DOM rendered and analyzed in {scanDuration || "a few"}s.</p>
+                </div>
+              </div>
+            )}
 
             {/* WEBSITE TARGET INFO */}
             <div className="website-card">
               <div className="website-info">
                 <span className="info-label">TARGET WEBSITE</span>
-                <strong>{website.url}</strong>
+                <strong>{requestedUrl || website.url}</strong>
+                {isRedirected && (
+                  <div className="redirect-badge" title="Website redirected to destination">
+                    ↪ Redirected to: <span>{finalUrl}</span>
+                  </div>
+                )}
               </div>
               <div className="website-info">
                 <span className="info-label">PAGE TITLE</span>
                 <strong>{website.title || "Untitled Website"}</strong>
               </div>
+              {scanDuration && (
+                <div className="website-info">
+                  <span className="info-label">SCAN DURATION</span>
+                  <strong>⏱️ {scanDuration}s</strong>
+                </div>
+              )}
               {result.scan_id && (
                 <div className="website-info">
                   <span className="info-label">SCAN AUDIT ID</span>

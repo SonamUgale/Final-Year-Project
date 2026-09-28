@@ -184,32 +184,57 @@ The LLM does **NOT** act as the primary classifier; the supervised ML model perf
 
 ---
 
-## 8. Installation & Verification
+## 8. Resilient Website Scanning Engine
+
+DarkShield AI features a fault-tolerant website scanning pipeline designed to handle complex, JavaScript-heavy, and high-latency websites:
+
+### Multi-State Scanning Behavior
+- **Complete Scan (`scan_status: "complete"`):** The webpage reaches `domcontentloaded` within 20s, interactive elements and visual snapshot are captured, and security + AI models analyze the full page.
+- **Partial Scan (`scan_status: "partial"`):** If a dynamic site (e.g., heavy e-commerce portals) does not finish loading within the 20-second timeout, the engine inspects the current DOM. If usable content exists, it extracts available elements, preserves visual evidence, runs security & dark-pattern analyzers, and marks the result as `partial` with a descriptive warning banner.
+- **Anti-Bot / Interaction Required (`scan_status: "blocked_or_interaction_required"`):** Pages that present CAPTCHA challenges, Cloudflare verification, or HTTP 403/429 access restrictions are clearly flagged so users know automated scanning was restricted.
+- **Structured Failure (`scan_status: "failed"`):** Genuinely unreachable websites (DNS failures, connection refused, or empty timeouts) return a clean, structured diagnostic response with error classifications (`dns_failure`, `connection_refused`, `navigation_timeout`) without exposing Python tracebacks or throwing HTTP 500 errors.
+
+### Dynamic Website & Automation Limitations
+- **Universal Automation Disclaimer:** DarkShield AI is designed for automated auditing, but cannot bypass active CAPTCHAs, biometric challenges, or multi-factor authentication.
+- **Client-Side Heavy Hydration:** Sites with delayed hydration may take slightly longer or produce partial DOM extractions rather than complete DOM snapshots.
+- **Graceful Degradation:** A slow target website does not crash or bring down the DarkShield backend; each extraction stage (title, text, links, buttons, inputs, screenshot, cookies) operates independently.
+
+---
+
+## 9. How to Run the Project
 
 ### Prerequisites
-- Python 3.12+ (or Python 3.14 virtual environment)
+- Python 3.12+ (or existing virtual environment in `.\venv`)
 - Node.js 18+
-- Microsoft Edge installed (Windows)
+- Microsoft Edge installed on Windows
 
-### Backend Setup
-```bash
+### Terminal 1: Backend API (FastAPI)
+```powershell
 # Activate virtual environment
 .\venv\Scripts\activate
 
-# Run test suite
+# Run automated test suite (26 unit & integration tests)
 python -m unittest backend.tests.test_all
 
-# Run controlled validation
-python -m backend.tests.validate_real_world
-
-# Start API server
-uvicorn backend.app:app --reload --port 8000
+# Start FastAPI backend server on port 8000
+python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### Frontend Setup
-```bash
+### Terminal 2: Frontend Dashboard (React + Vite)
+```powershell
 cd frontend
+
+# Install dependencies (if not already installed)
 npm install
-npm run dev     # Dev server on http://localhost:5173
-npm run build   # Production bundle verification
+
+# Start Vite development server
+npm run dev
+# Dashboard opens on http://localhost:5173
+```
+
+### Terminal 3 (Optional): Local Test Site Server
+```powershell
+# Serve local test website with built-in dark patterns and cookie banner
+python -m http.server 5500 --directory test_site
+# Auditable at http://127.0.0.1:5500
 ```

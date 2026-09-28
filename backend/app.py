@@ -64,15 +64,67 @@ def home():
     }
 
 
+import logging
+
+logger = logging.getLogger("darkshield.api")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+
 # -------------------------------------------------
 # WEBSITE SCAN
 # -------------------------------------------------
 
 @app.post("/scan")
 def scan_website(request: WebsiteRequest):
-
+    logger.info(f"Received scan request for URL: {request.url}")
     scraped_data = scrape_website(request.url)
 
+    scan_status = scraped_data.get("scan_status", "complete")
+    nav_status = scraped_data.get("navigation_status", "success")
+    warning = scraped_data.get("warning")
+    error_type = scraped_data.get("error_type")
+    message = scraped_data.get("message")
+    duration = scraped_data.get("scan_duration_seconds", 0)
+
+    # 1. Total failure case: Website could not be reached or loaded at all
+    if scan_status == "failed":
+        logger.warning(f"Scan failed for URL {request.url}: [{error_type}] {message}")
+        scan_result = {
+            "scan_status": "failed",
+            "navigation_status": nav_status,
+            "error_type": error_type or "navigation_error",
+            "message": message or "The website could not be loaded for analysis.",
+            "requested_url": request.url,
+            "final_url": scraped_data.get("final_url", request.url),
+            "scan_duration_seconds": duration,
+            "website": scraped_data,
+            "security_analysis": {
+                "security_score": 0,
+                "risk_level": "Unknown",
+                "findings": [],
+                "total_findings": 0,
+                "summary": message or "Scan could not be completed as the host was unreachable."
+            },
+            "dark_pattern_analysis": {
+                "risk_score": 0,
+                "risk_level": "None",
+                "findings": [],
+                "total_dark_patterns": 0,
+                "summary": "No page content available for dark pattern detection."
+            },
+            "ai_analysis": {
+                "model": "Calibrated Linear SVM + TF-IDF (EC-DarkPattern)",
+                "confidence": 0.0,
+                "llm_status": get_llm_status()
+            }
+        }
+        scan_id = save_scan(scan_result)
+        scan_result["scan_id"] = scan_id
+        return scan_result
+
+    # 2. Complete, Partial, or Blocked scan: DOM content is available
+    logger.info(f"Executing security & AI dark pattern analyzers for {request.url} (status: {scan_status})")
     security_analysis = analyze_website(scraped_data)
     dark_pattern_analysis = security_analysis.get("dark_pattern_analysis", {})
     
@@ -83,6 +135,12 @@ def scan_website(request: WebsiteRequest):
     })
 
     scan_result = {
+        "scan_status": scan_status,
+        "navigation_status": nav_status,
+        "warning": warning,
+        "requested_url": request.url,
+        "final_url": scraped_data.get("final_url", request.url),
+        "scan_duration_seconds": duration,
         "website": scraped_data,
         "security_analysis": security_analysis,
         "dark_pattern_analysis": dark_pattern_analysis,
@@ -152,20 +210,65 @@ def get_pdf_report(scan_id: str):
 def scan_and_download_report(request: WebsiteRequest):
     """Scan website and immediately stream back the generated PDF report."""
     scraped_data = scrape_website(request.url)
-    security_analysis = analyze_website(scraped_data)
-    dark_pattern_analysis = security_analysis.get("dark_pattern_analysis", {})
-    ai_analysis = dark_pattern_analysis.get("ai_analysis", {
-        "model": "Calibrated Linear SVM + TF-IDF (EC-DarkPattern)",
-        "confidence": 0.95,
-        "llm_status": get_llm_status()
-    })
+    scan_status = scraped_data.get("scan_status", "complete")
+    nav_status = scraped_data.get("navigation_status", "success")
+    warning = scraped_data.get("warning")
+    error_type = scraped_data.get("error_type")
+    message = scraped_data.get("message")
+    duration = scraped_data.get("scan_duration_seconds", 0)
 
-    scan_result = {
-        "website": scraped_data,
-        "security_analysis": security_analysis,
-        "dark_pattern_analysis": dark_pattern_analysis,
-        "ai_analysis": ai_analysis
-    }
+    if scan_status == "failed":
+        scan_result = {
+            "scan_status": "failed",
+            "navigation_status": nav_status,
+            "error_type": error_type or "navigation_error",
+            "message": message or "The website could not be loaded for analysis.",
+            "requested_url": request.url,
+            "final_url": scraped_data.get("final_url", request.url),
+            "scan_duration_seconds": duration,
+            "website": scraped_data,
+            "security_analysis": {
+                "security_score": 0,
+                "risk_level": "Unknown",
+                "findings": [],
+                "total_findings": 0,
+                "summary": message or "Scan could not be completed as the host was unreachable."
+            },
+            "dark_pattern_analysis": {
+                "risk_score": 0,
+                "risk_level": "None",
+                "findings": [],
+                "total_dark_patterns": 0,
+                "summary": "No page content available for dark pattern detection."
+            },
+            "ai_analysis": {
+                "model": "Calibrated Linear SVM + TF-IDF (EC-DarkPattern)",
+                "confidence": 0.0,
+                "llm_status": get_llm_status()
+            }
+        }
+    else:
+        security_analysis = analyze_website(scraped_data)
+        dark_pattern_analysis = security_analysis.get("dark_pattern_analysis", {})
+        ai_analysis = dark_pattern_analysis.get("ai_analysis", {
+            "model": "Calibrated Linear SVM + TF-IDF (EC-DarkPattern)",
+            "confidence": 0.95,
+            "llm_status": get_llm_status()
+        })
+
+        scan_result = {
+            "scan_status": scan_status,
+            "navigation_status": nav_status,
+            "warning": warning,
+            "requested_url": request.url,
+            "final_url": scraped_data.get("final_url", request.url),
+            "scan_duration_seconds": duration,
+            "website": scraped_data,
+            "security_analysis": security_analysis,
+            "dark_pattern_analysis": dark_pattern_analysis,
+            "ai_analysis": ai_analysis
+        }
+
     scan_id = save_scan(scan_result)
     scan_result["scan_id"] = scan_id
 
