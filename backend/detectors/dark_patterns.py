@@ -23,10 +23,12 @@ Decision Fusion Logic:
 """
 
 import re
+from urllib.parse import urlparse
 from typing import Dict, Any, List
 
-from backend.detectors.scoring import calculate_dark_pattern_risk
+from backend.detectors.scoring import calculate_dark_pattern_risk, calculate_multimodal_risk
 from backend.ai.llm import enrich_findings_with_llm, get_llm_status
+from backend.ai.vision import analyze_screenshot, get_vision_status
 
 # Try importing AI detector gracefully
 try:
@@ -164,21 +166,41 @@ def detect_dark_patterns_rule_based(scraped_data: Dict[str, Any]) -> Dict[str, A
             "rule_signals": ["account_button_with_inputs"]
         })
 
-    # 5. EXCESSIVE EXTERNAL LINKS
+    # 5. EXCESSIVE EXTERNAL / REDIRECT LINKS
+    target_url = scraped_data.get("url", "")
+    target_domain = ""
+    if target_url:
+        try:
+            target_domain = urlparse(target_url).netloc.lower().split(":")[0]
+            if target_domain.startswith("www."):
+                target_domain = target_domain[4:]
+        except Exception:
+            target_domain = ""
+
     external_links = []
     for link in links:
         href = link.get("href")
         if href and (href.startswith("http://") or href.startswith("https://")):
-            external_links.append(href)
+            try:
+                link_domain = urlparse(href).netloc.lower().split(":")[0]
+                if link_domain.startswith("www."):
+                    link_domain = link_domain[4:]
+                # Link is genuinely external if domain differs and is not an internal subdomain
+                if target_domain and link_domain and not (link_domain == target_domain or link_domain.endswith("." + target_domain)):
+                    external_links.append(href)
+            except Exception:
+                pass
 
-    if len(external_links) > 10:
+    # Flag only if there is an overwhelmingly abnormal ratio of third-party outbound links (>40 links and >50% of total)
+    total_links_count = len(links)
+    if len(external_links) >= 40 and total_links_count > 0 and (len(external_links) / total_links_count) > 0.50:
         findings.append({
             "pattern": "Large Number of External Links",
             "severity": "Low",
             "detection_method": "Rule-Based",
             "confidence": 0.70,
             "element_type": "link",
-            "description": f"The website contains {len(external_links)} external links.",
+            "description": f"The website contains an unusually high ratio of third-party external links ({len(external_links)} links).",
             "evidence": external_links[:10],
             "rule_signals": ["high_external_link_count"]
         })
@@ -210,9 +232,13 @@ def detect_dark_patterns_rule_based(scraped_data: Dict[str, Any]) -> Dict[str, A
             })
 
         # 6b. Pre-selected Tracking Checkboxes
-        non_essential_preselected = [
-            cb["label"] for cb in preselected if not cb.get("is_essential")
-        ]
+        non_essential_preselected = []
+        for cb in preselected:
+            if isinstance(cb, dict):
+                if not cb.get("is_essential"):
+                    non_essential_preselected.append(cb.get("label", "Tracking/Marketing"))
+            elif isinstance(cb, str):
+                non_essential_preselected.append(cb)
         if non_essential_preselected:
             findings.append({
                 "pattern": "Pre-selected Tracking Checkboxes",
@@ -334,27 +360,75 @@ def detect_dark_patterns(scraped_data: Dict[str, Any]) -> Dict[str, Any]:
                 "rule_signals": []
             })
 
-    # 5. Phase 8: Calculate Separate Explainable Dark Pattern Risk Score
-    risk_data = calculate_dark_pattern_risk(fused_findings)
+    # 5. Semantic Dark Pattern Risk Score
+    risk_data = calculate_dark_pattern_risk(fused_findings, scraped_data)
 
-    # 6. Phase 9: Enrich Findings with LLM Contextual Explanations
+    # 6. Enrich Findings with LLM Contextual Explanations
     enriched_findings, llm_status = enrich_findings_with_llm(fused_findings)
 
-    # Calculate average AI confidence across findings
-    conf_values = [f.get("confidence", 0) for f in enriched_findings if f.get("confidence")]
+    # 7. Screenshot-Based Vision AI Analysis (Layout & Visual Prominence)
+    screenshot_b64 = scraped_data.get("screenshot_b64")
+    visual_analysis = analyze_screenshot(
+        screenshot_b64,
+        dom_context={
+            "url": scraped_data.get("url", ""),
+            "title": scraped_data.get("title", ""),
+            "buttons": scraped_data.get("buttons", []),
+            "dom_elements": scraped_data.get("dom_elements", [])
+        }
+    )
+
+    # 8. Multi-Modal Decision Fusion (Corroborate DOM/Text + Screenshot Vision)
+    multimodal_data = calculate_multimodal_risk(enriched_findings, visual_analysis, scraped_data)
+
+    # Calculate average AI confidence across combined findings
+    combined_findings = multimodal_data.get("combined_findings", enriched_findings)
+    conf_values = [f.get("confidence", 0) for f in combined_findings if f.get("confidence")]
     avg_confidence = round(sum(conf_values) / len(conf_values), 4) if conf_values else 0.0
 
+    # Model metadata
+    model_meta = ai_detector.get_model_metadata() if (ai_detector and hasattr(ai_detector, "get_model_metadata")) else {}
+    model_version = model_meta.get("model_version", "v2")
+    model_name = model_meta.get("model_name", "Calibrated Linear SVM V2")
+    test_acc = model_meta.get("test_accuracy", 0.9689)
+    f1_sc = model_meta.get("f1_score", 0.9691)
+    precision = model_meta.get("precision", 0.9672)
+    recall = model_meta.get("recall", 0.9710)
+    roc_auc = model_meta.get("roc_auc", 0.9924)
+    acc_disp = model_meta.get("accuracy_display", f"{round(test_acc * 100, 2)}%")
+
     return {
-        "risk_score": risk_data["risk_score"],
-        "risk_level": risk_data["risk_level"],
-        "total_dark_patterns": len(enriched_findings),
-        "findings": enriched_findings,
-        "score_breakdown": risk_data.get("score_breakdown", []),
-        "scoring_methodology": risk_data.get("methodology", ""),
+        "risk_score": multimodal_data["combined_risk_score"],
+        "risk_level": multimodal_data["combined_risk_level"],
+        "risk_breakdown": multimodal_data.get("risk_breakdown", risk_data.get("risk_breakdown", {})),
+        "total_dark_patterns": len(combined_findings),
+        "findings": combined_findings,
+        "score_breakdown": multimodal_data.get("score_breakdown", risk_data.get("score_breakdown", [])),
+        "scoring_methodology": multimodal_data.get("methodology", risk_data.get("methodology", "")),
         "cookie_consent": scraped_data.get("cookie_consent", {}),
+        "semantic_analysis": {
+            "risk_score": risk_data["risk_score"],
+            "risk_level": risk_data["risk_level"],
+            "risk_breakdown": risk_data.get("risk_breakdown", {}),
+            "total_patterns": len(enriched_findings),
+            "findings": enriched_findings
+        },
+        "visual_analysis": visual_analysis,
+        "combined_analysis": multimodal_data,
         "ai_analysis": {
-            "model": "Calibrated Linear SVM + TF-IDF (EC-DarkPattern)",
+            "model": model_name,
+            "model_name": model_name,
+            "model_version": model_version,
+            "test_accuracy": test_acc,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1_sc,
+            "roc_auc": roc_auc,
+            "accuracy_display": acc_disp,
+            "vision_model": visual_analysis.get("provider", "Vision AI Offline Fallback"),
             "average_confidence": avg_confidence,
-            "llm_status": llm_status
+            "llm_status": llm_status,
+            "vision_status": visual_analysis.get("status", get_vision_status()),
+            "v1_historical": model_meta.get("v1_historical")
         }
     }

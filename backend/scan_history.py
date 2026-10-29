@@ -71,10 +71,12 @@ def save_scan(scan_data: Dict[str, Any]) -> str:
     dark_risk_level = dark_patterns.get("risk_level", "None")
     total_findings = security.get("total_findings", len(security.get("findings", [])))
     total_dark_patterns = dark_patterns.get("total_dark_patterns", len(dark_patterns.get("findings", [])))
-    has_screenshot = bool(website.get("screenshot_b64"))
+    has_screenshot = bool(website.get("screenshot_b64") or scan_data.get("screenshot_url") or website.get("screenshot_url"))
+    screenshot_url = f"/scan/{scan_id}/screenshot" if has_screenshot else None
 
     # Create index summary item
     scan_status = scan_data.get("scan_status", website.get("scan_status", "complete"))
+    scan_mode = scan_data.get("scan_mode", website.get("scan_mode", "automatic"))
     navigation_status = scan_data.get("navigation_status", website.get("navigation_status", "success"))
     warning = scan_data.get("warning", website.get("warning"))
     duration = scan_data.get("scan_duration_seconds", website.get("scan_duration_seconds", 0))
@@ -85,6 +87,7 @@ def save_scan(scan_data: Dict[str, Any]) -> str:
         "url": url,
         "title": title,
         "scan_status": scan_status,
+        "scan_mode": scan_mode,
         "navigation_status": navigation_status,
         "warning": warning,
         "scan_duration_seconds": duration,
@@ -95,12 +98,19 @@ def save_scan(scan_data: Dict[str, Any]) -> str:
         "total_findings": total_findings,
         "total_dark_patterns": total_dark_patterns,
         "has_screenshot": has_screenshot,
+        "screenshot_url": screenshot_url,
     }
 
-    # Attach scan_id and timestamp to the detailed object
+    # Attach scan_id, scan_mode and timestamp to the detailed object
     detailed_record = dict(scan_data)
     detailed_record["scan_id"] = scan_id
+    detailed_record["scan_mode"] = scan_mode
     detailed_record["timestamp"] = now.isoformat()
+    detailed_record["has_screenshot"] = has_screenshot
+    detailed_record["screenshot_url"] = screenshot_url
+    if "website" in detailed_record and isinstance(detailed_record["website"], dict):
+        detailed_record["website"]["has_screenshot"] = has_screenshot
+        detailed_record["website"]["screenshot_url"] = screenshot_url
 
     # Save detailed scan file
     detailed_filepath = os.path.join(SCANS_DIR, f"{scan_id}.json")
@@ -133,7 +143,14 @@ def get_scan_by_id(scan_id: str) -> Optional[Dict[str, Any]]:
         return None
     try:
         with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
+            record = json.load(f)
+            has_ss = bool(record.get("has_screenshot") or record.get("website", {}).get("screenshot_b64"))
+            record["has_screenshot"] = has_ss
+            record["screenshot_url"] = f"/scan/{scan_id}/screenshot" if has_ss else None
+            if "website" in record and isinstance(record["website"], dict):
+                record["website"]["has_screenshot"] = has_ss
+                record["website"]["screenshot_url"] = f"/scan/{scan_id}/screenshot" if has_ss else None
+            return record
     except Exception as e:
         print(f"[ScanHistory] Failed to read scan {scan_id}: {e}")
         return None

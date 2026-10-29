@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Scenario B - Crawl with Timeout URL</title>
+</head>
+<body>
+  <h1>Store Catalog with Delayed Page</h1>
+  <nav>
+    <a href="http://127.0.0.1:8000/test/delay/8" id="link-timeout">Delayed Product Page (Times Out)</a>
+    <a href="/fixture_b.html" id="link-deals">Limited Deals (Deceptive Patterns)</a>
+    <a href="/fixture_c.html" id="link-support">Customer Support (Clean)</a>
+  </nav>
+  <p>This test fixture verifies that when one URL in the crawl queue times out, the queue shifts cleanly and remaining pages are still processed and summarized.</p>
+</body>
+</html>

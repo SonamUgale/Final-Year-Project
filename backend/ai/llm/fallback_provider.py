@@ -42,26 +42,26 @@ GROUNDED_EXPLANATION_TEMPLATES = {
     },
     "Social Proof": {
         "explanation": (
-            "The site highlights notifications of other users' recent activity (e.g., purchases, views, or cart additions). "
-            "These messages simulate collective urgency and popular demand."
+            "The interface leverages social validation claims, crowd metrics, or popularity signals "
+            "to influence user perception and steer engagement through perceived collective behavior."
         ),
         "why_it_matters": (
-            "Peer activity alerts exploit herd behavior to validate purchases without objective evidence of quality or necessity."
+            "Social influence cues can bias consumer judgment by suggesting widespread demand without independent verification."
         ),
         "recommendation": (
-            "Base your buying decision on independent product reviews and personal necessity rather than on-screen activity tickers."
+            "Base decisions on independent research and actual requirements rather than on-screen popularity indicators."
         )
     },
     "Misdirection": {
         "explanation": (
-            "The page utilizes asymmetric phrasing or confirmshaming where rejecting an offer is framed "
-            "in humiliating or emotionally manipulative terms (e.g. 'No thanks, I prefer paying full price')."
+            "The interface employs asymmetric phrasing, deceptive visual emphasis, or manipulative framing "
+            "to steer the user toward an option preferred by the website."
         ),
         "why_it_matters": (
-            "Confirmshaming preys on user psychology to induce guilt or self-doubt when exercising valid consumer choices like declining marketing opt-ins."
+            "Manipulative framing diminishes user autonomy by making the privacy-preserving or cost-saving choice less obvious or appealing."
         ),
         "recommendation": (
-            "Recognize the manipulative phrasing and confidently click the decline option. You are entitled to reject offers without feeling judged."
+            "Carefully review all available options and select the path that aligns with your true intent, regardless of interface emphasis."
         )
     },
     "Obstruction": {

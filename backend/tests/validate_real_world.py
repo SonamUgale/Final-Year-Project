@@ -4,7 +4,8 @@ DarkShield AI - Controlled Real-World & Test-Site Validation Procedure
 
 Executes end-to-end scanning across reference pages:
 1. Local Test Site (contains designed deceptive UX patterns)
-2. Public Benchmark Pages (e.g., example.com, w3.org)
+2. Public Benchmark Page (https://example.com - clean baseline)
+3. Educational Institution Site (https://www.kkwagh.edu.in/ - KKWIEER College)
 
 For each target, logs:
 - Target URL
@@ -13,30 +14,47 @@ For each target, logs:
 - Dark Pattern Risk Score & Risk Level
 - Potential Dark Patterns Detected
 - Calibrated Confidence & Evidence
-- Detection Method (Hybrid, AI Model, Rule-Based)
-- Evidence Snippets & Element Types
+- Detection Method (Hybrid, AI Model, Rule-Based, Vision AI)
+- Model Version (v2)
 """
 
 import os
 import sys
 import json
+import urllib.request
 from datetime import datetime, timezone
 
 from backend.scraper.browser import scrape_website
 from backend.analyzer import analyze_website
 
 
+# Resolve local test site path
+LOCAL_FILE_PATH = f"file:///{os.path.abspath('test_site/index.html').replace(os.sep, '/')}"
+
+def get_test_site_target():
+    """Check if local live server on 5500 is running, else use file:/// URL."""
+    try:
+        req = urllib.request.urlopen("http://127.0.0.1:5500", timeout=1.5)
+        if req.status in [200, 301, 302]:
+            return "http://127.0.0.1:5500"
+    except Exception:
+        pass
+    return LOCAL_FILE_PATH
+
+
 VALIDATION_TARGETS = [
     # 1. Local controlled test site (contains simulated dark patterns)
-    f"file:///{os.path.abspath('test_site/index.html').replace(os.sep, '/')}",
+    get_test_site_target(),
     # 2. Public clean benchmark site
-    "https://example.com"
+    "https://example.com",
+    # 3. Real-world educational institution site (KKWIEER)
+    "https://www.kkwagh.edu.in/"
 ]
 
 
 def run_validation():
     print("============================================================")
-    print("  DarkShield AI — Controlled Validation Procedure")
+    print("  DarkShield AI — Controlled Validation Procedure (V2)")
     print("============================================================")
 
     results = []
@@ -55,6 +73,7 @@ def run_validation():
             record = {
                 "url": target,
                 "timestamp": start_time,
+                "model_version": dp_analysis.get("ai_analysis", {}).get("model_version", "v1"),
                 "security": {
                     "score": analysis.get("security_score"),
                     "risk_level": analysis.get("risk_level"),
@@ -82,9 +101,16 @@ def run_validation():
             print(f"  ✓ Security Score: {record['security']['score']} ({record['security']['risk_level']})")
             print(f"  ✓ Dark Pattern Score: {record['dark_patterns']['risk_score']} ({record['dark_patterns']['risk_level']})")
             print(f"  ✓ Patterns Detected: {record['dark_patterns']['patterns_count']}")
-            for p in record['dark_patterns']['detected_patterns']:
-                print(f"     - [{p['detection_method']}] {p['pattern']} ({p['element_type']}, conf: {p['confidence']})")
-                print(f"       Evidence: {p['evidence'][:2]}")
+            if record['dark_patterns']['patterns_count'] == 0:
+                print("     - No reliable dark patterns detected (Clean site).")
+            else:
+                for p in record['dark_patterns']['detected_patterns']:
+                    print(f"     - [{p['detection_method']}] {p['pattern']} ({p['element_type']}, conf: {p['confidence']})")
+                    ev = p.get('evidence', [])
+                    if isinstance(ev, list) and ev:
+                        print(f"       Evidence: {ev[:2]}")
+                    elif isinstance(ev, str):
+                        print(f"       Evidence: {ev[:80]}")
 
             results.append(record)
 
@@ -93,6 +119,7 @@ def run_validation():
             results.append({
                 "url": target,
                 "timestamp": start_time,
+                "status": "error",
                 "error": str(e)
             })
 

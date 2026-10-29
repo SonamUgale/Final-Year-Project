@@ -18,7 +18,7 @@ if not logger.handlers:
 def find_edge_executable():
     """
     Find Microsoft Edge installed on Windows.
-    Preserves exact existing path discovery order.
+    Preserves exact existing path discovery order with fallback paths.
     """
     possible_paths = [
         os.path.expandvars(
@@ -30,10 +30,12 @@ def find_edge_executable():
         os.path.expandvars(
             r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"
         ),
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
     ]
 
     for path in possible_paths:
-        if os.path.exists(path):
+        if path and os.path.exists(path):
             return path
 
     return None
@@ -59,33 +61,30 @@ def _classify_playwright_error(err_str: str) -> tuple[str, str]:
     return "navigation_error", f"Network or navigation error: {err_str[:120]}"
 
 
-def _detect_bot_or_blocked(title: str, text: str, status_code: int = 200) -> bool:
-    """Detect whether the page has an anti-bot challenge or block wall."""
-    if status_code in [403, 429]:
-        return True
-    
-    t_lower = (title or "").lower()
-    text_snippet = (text or "")[:1500].lower()
+from backend.scraper.access_detector import detect_access_block
+from backend.captured_page import (
+    CapturedPage,
+    evaluate_page_completeness,
+    SCAN_TIMEOUT,
+    SCAN_WAIT_AFTER_LOAD,
+    SCAN_MIN_VISIBLE_TEXT,
+    SCAN_MIN_DOM_SIZE,
+)
 
-    bot_phrases = [
-        "robot check",
-        "attention required! | cloudflare",
-        "just a moment...",
-        "cf-turnstile",
-        "checking your browser before accessing",
-        "please verify you are a human",
-        "access denied",
-        "pardon our interruption",
-        "security check",
-        "complete captcha",
-        "enter the characters you see below",
-    ]
+# Scanner runtime configuration via environment variables
+SCAN_HEADLESS = os.getenv("SCAN_HEADLESS", "true").lower() in ("true", "1", "yes")
 
-    for phrase in bot_phrases:
-        if phrase in t_lower or phrase in text_snippet:
-            return True
 
-    return False
+def _detect_bot_or_blocked(title: str, text: str, status_code: int = 200, html: str = "", headers: dict = None) -> bool:
+    """Legacy helper maintained for test compatibility; delegates to detect_access_block."""
+    res = detect_access_block(
+        html=html,
+        title=title,
+        text=text,
+        status_code=status_code,
+        headers=headers
+    )
+    return res["is_blocked"]
 
 
 def scrape_website(url: str) -> dict:
@@ -101,35 +100,22 @@ def scrape_website(url: str) -> dict:
     - Independent fault-tolerant extraction of text, links, buttons, inputs, DOM candidates, screenshot, and cookie banners
     """
     t0 = time.time()
-    logger.info(f"Initiating scan for requested URL: {url}")
+    print(f"[Scanner] Starting scan: {url}")
+    logger.info(f"[Scanner] Starting scan: {url}")
 
     edge_path = find_edge_executable()
-    if not edge_path:
-        logger.error("Microsoft Edge was not found on this system.")
-        return {
-            "scan_status": "failed",
-            "navigation_status": "failed",
-            "requested_url": url,
-            "final_url": url,
-            "url": url,
-            "title": "Browser Missing",
-            "text": "",
-            "links": [],
-            "buttons": [],
-            "inputs": [],
-            "headers": {},
-            "dom_elements": [],
-            "screenshot_b64": None,
-            "cookie_consent": {},
-            "scan_duration_seconds": round(time.time() - t0, 2),
-            "warning": None,
-            "error_type": "edge_not_found",
-            "message": "Microsoft Edge executable was not found. Please install Microsoft Edge.",
-        }
+    if edge_path:
+        logger.info(f"Using Microsoft Edge: {edge_path}")
+    else:
+        logger.info("Microsoft Edge executable not found at default paths; using Playwright Chromium.")
 
     # State variables
     navigation_status = "success"
     scan_status = "complete"
+    access_blocked = False
+    block_provider = None
+    block_info = {}
+    html = ""
     warning_msg = None
     error_type = None
     error_message = None
@@ -143,10 +129,9 @@ def scrape_website(url: str) -> dict:
         page = None
 
         try:
-            browser = p.chromium.launch(
-                executable_path=edge_path,
-                headless=True,
-                args=[
+            launch_args = {
+                "headless": SCAN_HEADLESS,
+                "args": [
                     "--disable-gpu",
                     "--no-sandbox",
                     "--disable-dev-shm-usage",
@@ -155,16 +140,51 @@ def scrape_website(url: str) -> dict:
                     "--disable-background-networking",
                     "--disable-features=Translate,OptimizationHints,MediaRouter",
                 ],
-            )
+            }
+            if edge_path:
+                launch_args["executable_path"] = edge_path
 
+            browser = p.chromium.launch(**launch_args)
+        except Exception as launch_err:
+            logger.error(f"Browser launch failed: {launch_err}")
+            return {
+                "scan_status": "failed",
+                "navigation_status": "failed",
+                "requested_url": url,
+                "final_url": url,
+                "url": url,
+                "title": "Browser Missing",
+                "text": "",
+                "links": [],
+                "buttons": [],
+                "inputs": [],
+                "headers": {},
+                "dom_elements": [],
+                "screenshot_b64": None,
+                "cookie_consent": {},
+                "scan_duration_seconds": round(time.time() - t0, 2),
+                "warning": None,
+                "error_type": "browser_launch_failed",
+                "message": f"Browser launch failed: {launch_err}. Please ensure Microsoft Edge or Playwright Chromium is installed.",
+            }
+
+        try:
             context = browser.new_context(
                 viewport={"width": 1440, "height": 900},
+                locale="en-US",
+                timezone_id="Asia/Kolkata",
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/131.0.0.0 Safari/537.36"
                 ),
-                ignore_https_errors=True,
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Upgrade-Insecure-Requests": "1",
+                },
+                ignore_https_errors=False,  # Strict SSL security
+                java_script_enabled=True,
             )
 
             page = context.new_page()
@@ -172,7 +192,7 @@ def scrape_website(url: str) -> dict:
             # -------------------------------------------------
             # RESILIENT NAVIGATION WITH BOUNDED RETRY
             # -------------------------------------------------
-            nav_timeout = 20000  # 20 seconds navigation timeout
+            nav_timeout = SCAN_TIMEOUT  # Configurable navigation timeout
             nav_attempts = 0
             max_nav_attempts = 2  # At most 1 initial + 1 retry
 
@@ -185,9 +205,16 @@ def scrape_website(url: str) -> dict:
                         wait_until="domcontentloaded",
                         timeout=nav_timeout,
                     )
+                    # Attempt load state with bounded timeout (allows async hydration/scripts)
+                    try:
+                        page.wait_for_load_state("load", timeout=4000)
+                    except Exception:
+                        pass
                     # Navigation succeeded normally
                     navigation_status = "success"
                     scan_status = "complete"
+                    print("[Scanner] Navigation completed")
+                    logger.info("[Scanner] Navigation completed")
                     break
 
                 except PlaywrightTimeoutError as te:
@@ -294,14 +321,14 @@ def scrape_website(url: str) -> dict:
                 }
 
             # If page succeeded or is partial, give JS a brief moment to stabilize
-            if scan_status == "complete":
+            if scan_status == "complete" and SCAN_WAIT_AFTER_LOAD > 0:
                 try:
-                    page.wait_for_timeout(1000)
+                    page.wait_for_timeout(min(SCAN_WAIT_AFTER_LOAD, 3000))
                 except Exception:
                     pass
 
             # -------------------------------------------------
-            # HTTP RESPONSE HEADERS
+            # HTTP RESPONSE HEADERS & STATUS
             # -------------------------------------------------
             http_status = 200
             if response:
@@ -312,8 +339,11 @@ def scrape_website(url: str) -> dict:
                     headers = {}
                     http_status = 200
 
+            print(f"[Scanner] HTTP status: {http_status}")
+            logger.info(f"[Scanner] HTTP status: {http_status}")
+
             # -------------------------------------------------
-            # PAGE TITLE EXTRACTION (Fault-Tolerant)
+            # PAGE TITLE, TEXT & HTML EXTRACTION (Fault-Tolerant)
             # -------------------------------------------------
             title = ""
             try:
@@ -321,31 +351,59 @@ def scrape_website(url: str) -> dict:
             except Exception:
                 title = ""
 
-            # -------------------------------------------------
-            # BODY TEXT EXTRACTION (Fault-Tolerant)
-            # -------------------------------------------------
             text = ""
             try:
                 text = page.evaluate("() => document.body ? (document.body.innerText || '') : ''") or ""
             except Exception:
                 text = ""
 
-            # -------------------------------------------------
-            # ANTI-BOT / BLOCKED SITE DETECTION
-            # -------------------------------------------------
-            is_blocked = _detect_bot_or_blocked(title, text, http_status)
-            if is_blocked:
-                logger.warning(f"Bot protection or access challenge detected for {final_url} (HTTP {http_status})")
-                scan_status = "blocked_or_interaction_required"
-                navigation_status = "blocked_or_interaction_required"
-                warning_msg = (
-                    "This website presented an anti-bot challenge or requires human interaction "
-                    "(e.g., CAPTCHA, Cloudflare, or Access Verification). "
-                    "Automated analysis was restricted to accessible content."
-                )
+            try:
+                html = page.content() or ""
+            except Exception:
+                html = ""
 
             # -------------------------------------------------
-            # VISUAL SCREENSHOT (Fault-Tolerant)
+            # ACCESS BLOCK & ANTI-BOT DETECTION
+            # -------------------------------------------------
+            print("[Scanner] Checking access status")
+            logger.info("[Scanner] Checking access status")
+            block_info = detect_access_block(
+                page=page,
+                response=response,
+                html=html,
+                title=title,
+                text=text,
+                status_code=http_status,
+                headers=headers,
+                url=final_url
+            )
+            access_blocked = block_info["is_blocked"]
+            block_provider = block_info.get("block_provider")
+            block_reason = block_info.get("reason")
+
+            if access_blocked:
+                provider_str = block_provider or "Unknown security/CDN provider"
+                print(f"[Scanner] Access blocked: provider={provider_str}")
+                print("[Scanner] Dark-pattern analysis skipped")
+                logger.warning(f"[Scanner] Access blocked: provider={provider_str}")
+                logger.warning("[Scanner] Dark-pattern analysis skipped")
+
+                scan_status = "blocked"
+                navigation_status = "blocked"
+                warning_msg = (
+                    f"The website's security system ({provider_str}) denied automated access. "
+                    "Dark-pattern analysis was not performed. Please use Browser Capture Mode to analyze this website."
+                )
+            else:
+                print("[Scanner] Access check passed")
+                print("[Scanner] Extracting DOM")
+                print("[Scanner] Capturing screenshot")
+                logger.info("[Scanner] Access check passed")
+                logger.info("[Scanner] Extracting DOM")
+                logger.info("[Scanner] Capturing screenshot")
+
+            # -------------------------------------------------
+            # VISUAL SCREENSHOT (Fault-Tolerant; captured for evidence)
             # -------------------------------------------------
             screenshot_b64 = None
             try:
@@ -367,13 +425,28 @@ def scrape_website(url: str) -> dict:
             links = []
             buttons = []
             inputs = []
+            forms = []
+            checkboxes = []
+            dom_elements = []
+            cookie_consent = {
+                "banner_detected": False,
+                "banner_text": "",
+                "accept_button": None,
+                "reject_button": None,
+                "manage_button": None,
+                "preselected_checkboxes": [],
+                "has_close_button": False,
+            }
 
-            try:
-                extracted_elements = page.evaluate("""
+            if not access_blocked:
+                try:
+                    extracted_elements = page.evaluate("""
                     () => {
                         const links = [];
                         const buttons = [];
                         const inputs = [];
+                        const forms = [];
+                        const checkboxes = [];
 
                         // 1. Links
                         document.querySelectorAll('a').forEach((a, idx) => {
@@ -404,30 +477,48 @@ def scrape_website(url: str) -> dict:
                             });
                         });
 
-                        return { links, buttons, inputs };
+                        // 4. Forms
+                        document.querySelectorAll('form').forEach((f, idx) => {
+                            if (idx >= 30) return;
+                            forms.push({
+                                id: f.id || null,
+                                name: f.name || null,
+                                action: f.getAttribute('action') || null,
+                                method: (f.getAttribute('method') || 'GET').toUpperCase()
+                            });
+                        });
+
+                        // 5. Checkboxes
+                        document.querySelectorAll('input[type="checkbox"]').forEach((cb, idx) => {
+                            if (idx >= 40) return;
+                            const label = cb.closest('label') || document.querySelector(`label[for="${cb.id}"]`);
+                            checkboxes.push({
+                                name: cb.name || cb.id || '',
+                                id: cb.id || '',
+                                checked: Boolean(cb.checked),
+                                required: Boolean(cb.required),
+                                label: label ? (label.innerText || '').trim() : ''
+                            });
+                        });
+
+                        return { links, buttons, inputs, forms, checkboxes };
                     }
                 """)
-                links = extracted_elements.get("links", [])
-                buttons = extracted_elements.get("buttons", [])
-                inputs = extracted_elements.get("inputs", [])
-            except Exception as elem_err:
-                logger.warning(f"Batch element extraction fallback triggered: {elem_err}")
-                links, buttons, inputs = [], [], []
+                    links = extracted_elements.get("links", [])
+                    buttons = extracted_elements.get("buttons", [])
+                    inputs = extracted_elements.get("inputs", [])
+                    forms = extracted_elements.get("forms", [])
+                    checkboxes = extracted_elements.get("checkboxes", [])
+                except Exception as elem_err:
+                    logger.warning(f"Batch element extraction fallback triggered: {elem_err}")
+                    links, buttons, inputs, forms, checkboxes = [], [], [], [], []
 
             # -------------------------------------------------
             # COOKIE CONSENT BANNER DETECTION (Fault-Tolerant)
             # -------------------------------------------------
-            cookie_consent = {
-                "banner_detected": False,
-                "banner_text": "",
-                "accept_button": None,
-                "reject_button": None,
-                "manage_button": None,
-                "preselected_checkboxes": [],
-                "has_close_button": False,
-            }
-            try:
-                cookie_consent = page.evaluate(r"""
+            if not access_blocked:
+                try:
+                    cookie_consent = page.evaluate(r"""
                     () => {
                         const data = {
                             banner_detected: false,
@@ -526,15 +617,15 @@ def scrape_website(url: str) -> dict:
                         return data;
                     }
                 """)
-            except Exception as c_err:
-                logger.debug(f"Cookie consent parsing exception: {c_err}")
+                except Exception as c_err:
+                    logger.debug(f"Cookie consent parsing exception: {c_err}")
 
             # -------------------------------------------------
             # STRUCTURED DOM CANDIDATE EXTRACTION (Fault-Tolerant)
             # -------------------------------------------------
-            dom_elements = []
-            try:
-                dom_elements = page.evaluate("""
+            if not access_blocked:
+                try:
+                    dom_elements = page.evaluate("""
                     () => {
                         const candidates = [];
                         const seen = new Set();
@@ -612,62 +703,109 @@ def scrape_website(url: str) -> dict:
                         return candidates;
                     }
                 """)
-            except Exception as dom_err:
-                logger.warning(f"DOM candidate evaluation error: {dom_err}")
-                dom_elements = []
+                except Exception as dom_err:
+                    logger.warning(f"DOM candidate evaluation error: {dom_err}")
+                    dom_elements = []
+
+            # Evaluate page completeness & detect incomplete / partial captures
+            completeness = evaluate_page_completeness(
+                url=final_url,
+                title=title,
+                html=html,
+                text=text,
+                links=links,
+                buttons=buttons,
+                inputs=inputs,
+                forms=forms,
+                http_status=http_status,
+                access_blocked=access_blocked,
+                block_provider=block_provider,
+                block_reason=block_reason,
+                navigation_status=navigation_status
+            )
+
+            if completeness["is_blocked"]:
+                access_blocked = True
+                scan_status = "blocked"
+                navigation_status = "blocked"
+                capture_quality = "blocked"
+                provider_str = block_provider or "Security/CDN provider"
+                warning_msg = (
+                    f"The website's security system ({provider_str}) denied automated access. "
+                    "Dark-pattern analysis was not performed. Please use Browser Capture Mode to analyze this website."
+                )
+            elif completeness["is_partial"]:
+                scan_status = "partial"
+                capture_quality = "partial"
+                partial_note = (
+                    "Automated scan captured incomplete page content. "
+                    "Risk scoring was withheld to avoid a false clean result. Try Browser Capture."
+                )
+                if not warning_msg:
+                    warning_msg = partial_note
+                elif partial_note not in warning_msg:
+                    warning_msg = f"{warning_msg} {partial_note}"
+            else:
+                capture_quality = "complete"
 
             duration = round(time.time() - t0, 2)
             logger.info(
                 f"Scraping completed for {final_url} in {duration}s — "
-                f"Status: {scan_status} ({navigation_status}), "
+                f"Status: {scan_status} ({navigation_status}), Quality: {capture_quality}, "
                 f"Text: {len(text)} chars, Links: {len(links)}, Buttons: {len(buttons)}, Inputs: {len(inputs)}"
             )
 
-            return {
-                "scan_status": scan_status,
-                "navigation_status": navigation_status,
-                "requested_url": url,
-                "final_url": final_url,
-                "url": final_url or url,
-                "title": title or "Untitled Website",
-                "text": text,
-                "links": links,
-                "buttons": buttons,
-                "inputs": inputs,
-                "headers": headers,
-                "dom_elements": dom_elements or [],
-                "screenshot_b64": screenshot_b64,
-                "cookie_consent": cookie_consent,
-                "scan_duration_seconds": duration,
-                "warning": warning_msg,
-                "error_type": error_type,
-                "message": error_message,
-            }
+            captured_page = CapturedPage(
+                url=url,
+                final_url=final_url,
+                title=title,
+                html=html,
+                visible_text=text,
+                links=links,
+                buttons=buttons,
+                inputs=inputs,
+                forms=forms,
+                checkboxes=checkboxes,
+                dom_elements=dom_elements or [],
+                cookie_consent=cookie_consent,
+                headers=headers,
+                screenshot_b64=screenshot_b64,
+                capture_method="automated",
+                capture_status=scan_status,
+                navigation_status=navigation_status,
+                capture_quality=capture_quality,
+                http_status=http_status,
+                access_blocked=access_blocked,
+                block_provider=block_provider,
+                block_info=block_info,
+                scan_duration_seconds=duration,
+                page_completeness=completeness,
+                warning=warning_msg,
+                error_type=error_type,
+                message=error_message
+            )
+
+            return captured_page.to_dict()
 
         except Exception as error:
             logger.exception(f"Unexpected scraping error for {url}: {error}")
             duration = round(time.time() - t0, 2)
             etype, emsg = _classify_playwright_error(str(error))
-            return {
-                "scan_status": "failed",
-                "navigation_status": "failed",
-                "requested_url": url,
-                "final_url": final_url or url,
-                "url": final_url or url,
-                "title": "Scan Failed",
-                "text": "",
-                "links": [],
-                "buttons": [],
-                "inputs": [],
-                "headers": {},
-                "dom_elements": [],
-                "screenshot_b64": None,
-                "cookie_consent": {},
-                "scan_duration_seconds": duration,
-                "warning": None,
-                "error_type": etype,
-                "message": emsg or f"Unable to scan the website: {str(error)}",
-            }
+            failed_page = CapturedPage(
+                url=url,
+                final_url=final_url or url,
+                title="Scan Failed",
+                html="",
+                visible_text="",
+                capture_method="automated",
+                capture_status="failed",
+                capture_quality="blocked" if etype in ("access_denied", "waf_block") else "partial",
+                http_status=0,
+                scan_duration_seconds=duration,
+                error_type=etype,
+                message=emsg or f"Unable to scan the website: {str(error)}"
+            )
+            return failed_page.to_dict()
 
         finally:
             if context:

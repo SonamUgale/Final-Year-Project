@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Deterministic Test - Page C (Support)</title>
+  <style>
+    body { font-family: sans-serif; margin: 40px; line-height: 1.6; }
+    nav a { margin-right: 15px; color: #2563eb; text-decoration: none; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Customer Support & FAQs</h1>
+    <nav>
+      <!-- Loop Test Link: Points back to root Page A to verify deduplication prevents infinite loop -->
+      <a href="/fixture_a.html" id="link-back-page-a">Return to Home (Page A)</a>
+    </nav>
+  </header>
+  <main>
+    <h2>Transparent Customer Care</h2>
+    <p>We believe in honest, fair service with no hidden conditions. If you have questions regarding your order, our team is available 24/7.</p>
+    <p>Our standard refund policy offers a full 30-day money-back guarantee without any restocking fees.</p>
+  </main>
+</body>
+</html>

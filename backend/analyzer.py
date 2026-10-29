@@ -1,14 +1,81 @@
 from urllib.parse import urlparse
+from typing import Dict, Any, Union
 
 from backend.detectors.dark_patterns import detect_dark_patterns
+from backend.captured_page import CapturedPage
 
 
-def analyze_website(scraped_data):
+def analyze_page(captured_page: Union[CapturedPage, Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Unified Downstream Analysis Pipeline for both Automated Scan and Browser Capture.
+    Guarantees that both modes pass through identical preprocessing, SVM V2,
+    rule detection, evidence validation, and 5-factor risk scoring.
+    """
+    if not isinstance(captured_page, CapturedPage):
+        if isinstance(captured_page, dict):
+            page_obj = CapturedPage.from_dict(captured_page)
+        else:
+            page_obj = CapturedPage(url=str(captured_page))
+    else:
+        page_obj = captured_page
+
+    scraped_data = page_obj.to_dict()
+
+    # 1. Guard against blocked pages: Never analyze access denied / challenge pages
+    if page_obj.is_blocked:
+        provider = page_obj.block_provider or "Unknown security/CDN provider"
+        http_status = page_obj.http_status or 403
+        msg = f"The website denied automated access ({provider}). Dark-pattern analysis was not performed."
+        print(f"[Scanner] Dark-pattern analysis skipped (access blocked: provider={provider})")
+
+        return {
+            "status": "blocked",
+            "capture_quality": "blocked",
+            "capture_method": page_obj.capture_method,
+            "scan_mode": page_obj.capture_method,
+            "scan_success": False,
+            "access_blocked": True,
+            "http_status": http_status,
+            "block_provider": provider,
+            "message": msg,
+            "warning": msg,
+            "risk_level": "Not Assessed",
+            "security_score": None,
+            "risk_score": None,
+            "total_patterns": 0,
+            "total_findings": 0,
+            "findings": [],
+            "page_completeness": page_obj.page_completeness,
+            "dark_pattern_analysis": {
+                "status": "blocked",
+                "capture_quality": "blocked",
+                "scan_success": False,
+                "access_blocked": True,
+                "http_status": http_status,
+                "block_provider": provider,
+                "message": msg,
+                "findings": [],
+                "risk_score": None,
+                "risk_level": "Not Assessed",
+                "risk_breakdown": None,
+                "summary": msg,
+                "total_dark_patterns": 0
+            }
+        }
+
+    # 2. Guard against incomplete / partial pages: Never assign false 'clean' score (0/100)
+    if page_obj.is_partial:
+        reasons_list = page_obj.page_completeness.get("reasons", ["Incomplete page content retrieved"])
+        msg = (
+            "Automated scan captured incomplete page content. "
+            "Risk scoring was withheld to avoid a false clean result. Try Browser Capture."
+        )
+        print(f"[Scanner] Dark-pattern analysis withheld (partial capture: {'; '.join(reasons_list)})")
 
     findings = []
     score = 100
 
-    url = scraped_data["url"]
+    url = scraped_data.get("url", "")
     links = scraped_data.get("links", [])
     inputs = scraped_data.get("inputs", [])
     buttons = scraped_data.get("buttons", [])
@@ -16,8 +83,29 @@ def analyze_website(scraped_data):
 
     parsed_url = urlparse(url)
 
-    # Run dark pattern detector
-    dark_pattern_analysis = detect_dark_patterns(scraped_data)
+    # Run complete dark pattern detector pipeline if complete, else withhold
+    if page_obj.is_partial:
+        dark_pattern_analysis = {
+            "status": "partial",
+            "capture_quality": "partial",
+            "scan_success": False,
+            "access_blocked": False,
+            "http_status": page_obj.http_status or 200,
+            "block_provider": None,
+            "message": msg,
+            "findings": [],
+            "risk_score": None,
+            "risk_level": "Not Assessed (Incomplete Capture)",
+            "risk_breakdown": None,
+            "summary": msg,
+            "total_dark_patterns": 0
+        }
+    else:
+        print("[Scanner] Running SVM")
+        print("[Scanner] Running rules")
+        print("[Scanner] Running Vision AI")
+        print("[Scanner] Calculating risk score")
+        dark_pattern_analysis = detect_dark_patterns(scraped_data)
 
     # Convert header names to lowercase
     headers = {
@@ -255,13 +343,26 @@ def analyze_website(scraped_data):
             break
 
     # -------------------------------------------------
-    # RETURN SECURITY REPORT
+    # RETURN SECURITY & DARK PATTERN REPORT
     # -------------------------------------------------
 
     return {
+        "status": "partial" if page_obj.is_partial else "complete",
+        "capture_quality": page_obj.capture_quality,
+        "capture_method": page_obj.capture_method,
+        "scan_mode": page_obj.capture_method,
+        "scan_success": not page_obj.is_partial,
+        "access_blocked": False,
         "risk_level": risk_level,
         "security_score": score,
+        "risk_score": dark_pattern_analysis.get("risk_score"),
         "total_findings": len(findings),
         "findings": findings,
+        "page_completeness": page_obj.page_completeness,
         "dark_pattern_analysis": dark_pattern_analysis
     }
+
+
+def analyze_website(scraped_data: Any) -> Dict[str, Any]:
+    """Compatibility wrapper redirecting to the unified analyze_page pipeline."""
+    return analyze_page(scraped_data)

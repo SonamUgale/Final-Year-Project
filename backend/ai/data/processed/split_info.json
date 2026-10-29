@@ -1,67 +1,68 @@
 {
-  "generated_at": "2026-09-22T09:39:15.847481+00:00",
+  "generated_at": "2026-09-30T03:09:57.007088+00:00",
   "random_seed": 42,
   "method": "StratifiedGroupKFold(n_splits=20, shuffle=True) on page_id",
   "leakage_verification": "PASSED (0 overlapping page_ids across all splits)",
-  "total_samples": 2356,
+  "total_samples": 2790,
   "splits": {
     "train": {
       "name": "train",
-      "total_samples": 1649,
-      "unique_pages": 874,
+      "total_samples": 1953,
+      "unique_pages": 911,
       "label_distribution": {
-        "not_dark_pattern_0": 824,
-        "dark_pattern_1": 825,
-        "dark_pattern_ratio": 0.5003
+        "not_dark_pattern_0": 1038,
+        "dark_pattern_1": 915,
+        "dark_pattern_ratio": 0.4685
       },
       "category_distribution": {
-        "Not Dark Pattern": 824,
-        "Scarcity": 289,
-        "Social Proof": 226,
-        "Urgency": 145,
-        "Misdirection": 133,
-        "Obstruction": 19,
-        "Sneaking": 10,
-        "Forced Action": 3
+        "Not Dark Pattern": 1038,
+        "Scarcity": 295,
+        "Social Proof": 235,
+        "Urgency": 149,
+        "Misdirection": 124,
+        "Obstruction": 48,
+        "Forced Action": 38,
+        "Sneaking": 26
       }
     },
     "validation": {
       "name": "validation",
-      "total_samples": 352,
-      "unique_pages": 187,
+      "total_samples": 419,
+      "unique_pages": 200,
       "label_distribution": {
-        "not_dark_pattern_0": 176,
-        "dark_pattern_1": 176,
-        "dark_pattern_ratio": 0.5
+        "not_dark_pattern_0": 222,
+        "dark_pattern_1": 197,
+        "dark_pattern_ratio": 0.4702
       },
       "category_distribution": {
-        "Not Dark Pattern": 176,
-        "Scarcity": 63,
-        "Social Proof": 45,
-        "Misdirection": 31,
-        "Urgency": 29,
-        "Obstruction": 7,
-        "Sneaking": 1
+        "Not Dark Pattern": 222,
+        "Scarcity": 58,
+        "Social Proof": 42,
+        "Misdirection": 39,
+        "Urgency": 30,
+        "Obstruction": 16,
+        "Sneaking": 11,
+        "Forced Action": 1
       }
     },
     "test": {
       "name": "test",
-      "total_samples": 355,
-      "unique_pages": 187,
+      "total_samples": 418,
+      "unique_pages": 193,
       "label_distribution": {
-        "not_dark_pattern_0": 178,
-        "dark_pattern_1": 177,
-        "dark_pattern_ratio": 0.4986
+        "not_dark_pattern_0": 222,
+        "dark_pattern_1": 196,
+        "dark_pattern_ratio": 0.4689
       },
       "category_distribution": {
-        "Not Dark Pattern": 178,
-        "Scarcity": 66,
-        "Social Proof": 41,
-        "Urgency": 36,
-        "Misdirection": 31,
-        "Sneaking": 1,
-        "Obstruction": 1,
-        "Forced Action": 1
+        "Not Dark Pattern": 222,
+        "Scarcity": 65,
+        "Social Proof": 35,
+        "Misdirection": 32,
+        "Urgency": 31,
+        "Sneaking": 15,
+        "Forced Action": 15,
+        "Obstruction": 3
       }
     }
   }

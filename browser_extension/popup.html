@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DarkShield AI Inspector</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="header-brand">
+        <div class="brand-shield">🛡️</div>
+        <div>
+          <h1>DarkShield AI</h1>
+          <span class="brand-tag">Deceptive Design Inspector</span>
+        </div>
+      </div>
+      <div id="backend-status-pill" class="status-pill status-checking">
+        <span class="status-dot"></span>
+        <span id="backend-status-text">Checking...</span>
+      </div>
+    </header>
+
+    <!-- Target Page Info -->
+    <section class="card target-card">
+      <div class="card-label">CURRENT ACTIVE TAB</div>
+      <div id="tab-title" class="tab-title">Loading tab...</div>
+      <div id="tab-url" class="tab-url">...</div>
+    </section>
+
+    <!-- Main Action Buttons -->
+    <section id="action-section" class="action-section">
+      <button id="btn-analyze" class="btn-primary" disabled>
+        <span class="btn-icon">🔍</span>
+        <span id="btn-analyze-text">Analyze Current Page</span>
+      </button>
+
+      <button id="btn-whole-website-toggle" class="btn-primary btn-whole-site" disabled>
+        <span class="btn-icon">🌐</span>
+        <span id="btn-whole-website-text">Scan Whole Website</span>
+      </button>
+    </section>
+
+    <!-- Whole Website Crawl Configuration Panel -->
+    <section id="whole-site-panel" class="whole-site-panel hidden">
+      <div class="panel-header">
+        <span class="panel-icon">🌐</span>
+        <div class="panel-header-text">
+          <div class="panel-title">Whole Website Scan</div>
+          <div class="panel-desc">Crawls accessible internal pages on <strong id="site-domain-text">this website</strong> using your active Chrome session.</div>
+        </div>
+      </div>
+
+      <div class="settings-grid">
+        <div class="setting-group">
+          <label for="select-max-pages">Max Pages:</label>
+          <select id="select-max-pages" class="select-control">
+            <option value="5">5 Pages (Quick Scan)</option>
+            <option value="20" selected>20 Pages (Recommended)</option>
+            <option value="50">50 Pages</option>
+            <option value="100">100 Pages</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <label for="select-max-depth">Crawl Depth:</label>
+          <select id="select-max-depth" class="select-control">
+            <option value="1">Depth 1 (Direct links)</option>
+            <option value="2" selected>Depth 2 (Standard)</option>
+            <option value="3">Depth 3 (Deep crawl)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="panel-actions">
+        <button id="btn-start-site-scan" class="btn-action-primary">
+          <span class="btn-icon">🚀</span>
+          <span>Start Whole Website Scan</span>
+        </button>
+        <button id="btn-close-site-panel" class="btn-action-secondary">
+          <span>Cancel</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Single Page Progress Tracker (Hidden by default) -->
+    <section id="progress-section" class="progress-section hidden">
+      <div class="progress-title">
+        <span class="spinner-small"></span>
+        <span id="progress-status-msg">Extracting rendered DOM & elements...</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div id="progress-bar-fill" class="progress-bar-fill" style="width: 25%;"></div>
+      </div>
+      <div class="progress-step-note" id="progress-step-note">
+        Step 1 of 4: Scanning interactive buttons, links, and forms
+      </div>
+    </section>
+
+    <!-- Whole Website Progress Tracker (Hidden by default) -->
+    <section id="site-progress-section" class="site-progress-section hidden">
+      <div class="site-progress-header">
+        <div class="site-progress-title">
+          <span class="spinner-small"></span>
+          <span>Scanning Website: <strong id="site-prog-domain">...</strong></span>
+        </div>
+        <div id="site-prog-timer" class="site-timer">⏱️ 0s</div>
+      </div>
+
+      <div class="progress-bar-bg">
+        <div id="site-progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+      </div>
+
+      <div class="site-stats-grid">
+        <div class="site-stat-card">
+          <div class="stat-number" id="site-stat-discovered">0</div>
+          <div class="stat-label">Discovered</div>
+        </div>
+        <div class="site-stat-card">
+          <div class="stat-number" id="site-stat-scanned">0</div>
+          <div class="stat-label">Scanned</div>
+        </div>
+        <div class="site-stat-card">
+          <div class="stat-number" id="site-stat-blocked">0</div>
+          <div class="stat-label">Blocked</div>
+        </div>
+        <div class="site-stat-card">
+          <div class="stat-number" id="site-stat-failed">0</div>
+          <div class="stat-label">Failed</div>
+        </div>
+      </div>
+
+      <div class="site-current-item">
+        <span class="current-label">CURRENT URL:</span>
+        <div id="site-current-url" class="current-url-text">Starting crawl...</div>
+      </div>
+
+      <!-- Live First Page Deceptive Score (Produced within seconds) -->
+      <div id="site-live-score-card" class="site-live-card hidden">
+        <div class="site-live-card-header">
+          <span class="live-pill">⚡ INITIAL PAGE AUDIT</span>
+          <span id="site-live-badge" class="risk-badge risk-clean">Clean</span>
+        </div>
+        <div class="site-live-score-row">
+          <div class="live-score-num-wrap">
+            <span id="site-live-score-val" class="live-score-num">--</span>
+            <span class="live-score-denom">/100</span>
+          </div>
+          <div class="live-score-info">
+            <div id="site-live-findings-title" class="live-findings-title">0 Deceptive Patterns Found</div>
+            <div id="site-live-page-title" class="live-page-title">Current Tab Page</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Stream of Completed Pages (As they arrive) -->
+      <div id="site-live-stream-box" class="site-live-stream-box hidden">
+        <div class="live-stream-title">
+          <span>PAGES AUDITED IN PROGRESS</span>
+          <span id="site-live-stream-count" class="badge-count">0</span>
+        </div>
+        <div id="site-live-stream-list" class="site-live-stream-list"></div>
+      </div>
+
+      <button id="btn-cancel-site-scan" class="btn-danger-outline">
+        <span>⏹️ Cancel Scan</span>
+      </button>
+    </section>
+
+    <!-- Single Page Results Section (Hidden until scan finishes) -->
+    <section id="results-section" class="results-section hidden">
+      <div class="result-header">
+        <div class="score-box" id="score-box">
+          <span class="score-value" id="res-score">--</span>
+          <span class="score-max">/100</span>
+        </div>
+        <div class="result-meta">
+          <div id="res-risk-badge" class="risk-badge">Assessing</div>
+          <div id="res-patterns-count" class="patterns-count">0 patterns detected</div>
+        </div>
+      </div>
+
+      <!-- Detected Patterns List -->
+      <div id="patterns-list" class="patterns-list">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- Result Action Buttons -->
+      <div class="result-actions">
+        <button id="btn-open-dashboard" class="btn-secondary">
+          <span>📊 Open in DarkShield Dashboard</span>
+        </button>
+        <button id="btn-download-pdf" class="btn-secondary">
+          <span>📥 Download PDF Report</span>
+        </button>
+        <button id="btn-single-new-scan" class="btn-secondary btn-subtle">
+          <span>🔄 New Scan</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Whole Website Results Section (Hidden until scan finishes) -->
+    <section id="site-results-section" class="site-results-section hidden">
+      <!-- Target Website Summary Banner -->
+      <div class="site-target-banner">
+        <div class="site-target-info">
+          <div class="site-target-title" id="site-res-target-title">Website Audit Summary</div>
+          <div class="site-target-url" id="site-res-target-url">https://example.com/</div>
+        </div>
+        <span class="site-status-pill status-completed" id="site-res-status-pill">Completed</span>
+      </div>
+
+      <!-- Website Risk Summary Card (Exact visual style of current-page result) -->
+      <div class="result-header site-result-header">
+        <div class="score-box" id="site-score-box">
+          <span class="score-value" id="site-res-score">--</span>
+          <span class="score-max">/100</span>
+        </div>
+        <div class="result-meta">
+          <div class="summary-type-tag">WEBSITE DECEPTION INDEX</div>
+          <div id="site-res-risk-badge" class="risk-badge">Assessing</div>
+          <div id="site-res-summary-text" class="patterns-count">0 unique patterns detected</div>
+        </div>
+      </div>
+
+      <!-- Coverage & Methodology Info Card -->
+      <div class="site-coverage-card">
+        <div class="coverage-row">
+          <span class="coverage-label">Coverage:</span>
+          <span class="coverage-val" id="site-res-coverage">0/0 pages analyzed (0%)</span>
+          <span class="coverage-incomplete-badge hidden" id="site-res-incomplete-tag">⚠️ Incomplete</span>
+        </div>
+        <div class="methodology-note" id="site-res-methodology">
+          Formula: 50% Peak Page Score + 30% Average Page Score + 20% Category Diversity across inspected pages.
+        </div>
+      </div>
+
+      <!-- Overview Stats Pills -->
+      <div class="site-overview-pills">
+        <span class="overview-pill" id="pill-scanned">0 Scanned</span>
+        <span class="overview-pill pill-clean" id="pill-clean">0 Clean</span>
+        <span class="overview-pill pill-danger" id="pill-patterns">0 With Patterns</span>
+        <span class="overview-pill pill-muted" id="pill-blocked">0 Blocked</span>
+        <span class="overview-pill pill-warning hidden" id="pill-timed-out">0 Timed Out</span>
+        <span class="overview-pill pill-warning hidden" id="pill-failed">0 Failed</span>
+      </div>
+
+      <!-- Category Breakdown -->
+      <div id="site-category-breakdown" class="category-breakdown hidden">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- Page-by-Page Audit Header & List -->
+      <div class="audit-section-header">
+        <div class="card-label">PAGE-BY-PAGE AUDIT & EVIDENCE</div>
+        <div class="audit-header-controls">
+          <div id="audit-page-count" class="audit-count">0 pages</div>
+          <button id="btn-toggle-all-pages" class="btn-toggle-all" type="button">Expand All</button>
+        </div>
+      </div>
+
+      <div id="site-pages-list" class="site-pages-list">
+        <!-- Expandable page cards rendered dynamically -->
+      </div>
+
+      <!-- Result Action Buttons -->
+      <div class="result-actions">
+        <button id="btn-site-open-dashboard" class="btn-secondary">
+          <span>📊 Open in DarkShield Dashboard</span>
+        </button>
+        <button id="btn-site-download-pdf" class="btn-secondary">
+          <span>📥 Download PDF Report</span>
+        </button>
+        <button id="btn-site-new-scan" class="btn-secondary btn-subtle">
+          <span>🔄 New Scan</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Error Banner -->
+    <div id="error-banner" class="error-banner hidden">
+      <span class="error-icon">⚠️</span>
+      <span id="error-text">An error occurred.</span>
+    </div>
+
+    <!-- Footer Settings & Privacy Note -->
+    <footer class="popup-footer">
+      <div class="privacy-note">
+        🔒 <strong>Zero Evasion / Full Privacy:</strong> Analyzes rendered DOM in this tab. Passwords, cookies, and tokens are never read.
+      </div>
+      <div class="endpoint-config">
+        <span id="endpoint-label">Backend: <code id="endpoint-text">http://127.0.0.1:8000</code></span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
