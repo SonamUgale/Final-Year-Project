@@ -81,7 +81,7 @@ export function Sidebar({
                 {backendConnected ? "Backend Connected" : "Backend Offline"}
               </span>
               <span className="status-sub-text">
-                {backendConnected ? "FastAPI :8000 Online" : "FastAPI Disconnected"}
+                {backendConnected ? "FastAPI Online" : "FastAPI Disconnected"}
               </span>
             </div>
           </div>

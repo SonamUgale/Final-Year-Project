@@ -238,3 +238,6 @@ backend/data/*.json
 # Playwright browser profiles
 .playwright/
 pw_profile*/
+
+# Nested directory ignore
+Final-Year-Project/

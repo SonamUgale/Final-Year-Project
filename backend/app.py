@@ -66,14 +66,43 @@ app = FastAPI(title="DarkShield AI")
 # CORS
 # -------------------------------------------------
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    allow_private_network=True,
-)
+# Dynamic CORS configuration: Restrictive production defaults
+raw_allowed_origins = os.getenv("ALLOWED_ORIGINS", "").strip()
+if not raw_allowed_origins:
+    # Restrictive production defaults: Localhost, Vercel deployments, and Chrome extensions only
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        allow_origin_regex=r"^(https://.*\.vercel\.app|chrome-extension://.*)",
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS", "DELETE"],
+        allow_headers=["*"],
+    )
+elif raw_allowed_origins == "*":
+    # Explicit development-only wildcard override
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"^(https?://.*|chrome-extension://.*)",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # Explicit allowed origins specified via environment variable
+    explicit_origins = [o.strip() for o in raw_allowed_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=explicit_origins,
+        allow_origin_regex=r"^(https://.*\.vercel\.app|chrome-extension://.*)",
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS", "DELETE"],
+        allow_headers=["*"],
+    )
 
 
 import re
@@ -302,6 +331,28 @@ def parse_html_to_scraped_data(
 # HOME, HEALTH & MODEL METADATA
 # -------------------------------------------------
 
+@app.get("/health")
+def health():
+    ai_ready = False
+    model_meta = {}
+    try:
+        from backend.ai.detector import AIDarkPatternDetector
+        detector = AIDarkPatternDetector.get_instance()
+        ai_ready = detector.is_ready()
+        model_meta = detector.get_model_metadata()
+    except Exception:
+        ai_ready = False
+
+    return {
+        "status": "healthy",
+        "service": "DarkShield AI Backend",
+        "version": "2.4.0",
+        "ai_engine_ready": ai_ready,
+        "model_version": model_meta.get("model_version", "v2"),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
 @app.get("/")
 def home():
     ai_ready = False
@@ -370,6 +421,22 @@ def scan_website(request: WebsiteRequest):
             "scan_success": False,
             "access_blocked": False,
             "message": "Invalid URL provided. Please provide a valid HTTP or HTTPS URL.",
+            "requested_url": request.url,
+            "risk_score": None,
+            "findings": []
+        }
+
+    # SSRF Protection: validate URL safety before scraping
+    is_safe, ssrf_err = is_ssrf_safe_url(request.url, allow_local=bool(os.getenv("DARKSHIELD_ALLOW_LOCAL_TEST", "").strip() in ("1", "true", "yes")))
+    if not is_safe and "DNS resolution failed" not in (ssrf_err or ""):
+        logger.warning(f"Scan prohibited by security policy for {request.url}: {ssrf_err}")
+        return {
+            "status": "unsafe_url",
+            "scan_status": "failed",
+            "navigation_status": "failed",
+            "scan_success": False,
+            "access_blocked": False,
+            "message": f"Scan prohibited by security policy: {ssrf_err}",
             "requested_url": request.url,
             "risk_score": None,
             "findings": []
@@ -1081,7 +1148,8 @@ def start_website_scan(request: WebsiteScanRequest):
     scan_id = f"site_scan_{timestamp_str}_{short_uid}"
 
     max_p = max(1, min(request.max_pages or 100, 150))
-    concurrency = max(1, min(request.concurrency or 3, 6))
+    max_concurrency_cap = int(os.getenv("MAX_SCAN_CONCURRENCY", "3"))
+    concurrency = max(1, min(request.concurrency or 3, max_concurrency_cap))
     max_d = max(0, min(request.max_depth or 2, 5))
     allow_subs = bool(request.allow_subdomains)
     allow_loc = bool(request.allow_local)
@@ -1786,3 +1854,11 @@ def test_delay_endpoint(seconds: int = 5):
     return {"status": "delayed", "seconds": seconds}
 
 
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    host = os.getenv("HOST", "0.0.0.0")
+    logger.info(f"Starting DarkShield AI server on {host}:{port}")
+    uvicorn.run("backend.app:app", host=host, port=port, reload=False)

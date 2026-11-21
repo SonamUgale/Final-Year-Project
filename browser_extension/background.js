@@ -4,7 +4,20 @@
  * queue processing, bounded timeouts, and backend API synchronization.
  */
 
-const API_BASE = "http://127.0.0.1:8000";
+let API_BASE = "http://127.0.0.1:8000";
+
+// Load user-configured backend URL from extension storage (defaults to localhost:8000)
+chrome.storage.sync.get(["darkshield_backend_url"], (cfg) => {
+  if (cfg && cfg.darkshield_backend_url) {
+    API_BASE = cfg.darkshield_backend_url.replace(/\/+$/, "");
+  }
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "sync" && changes.darkshield_backend_url) {
+    API_BASE = (changes.darkshield_backend_url.newValue || "http://127.0.0.1:8000").replace(/\/+$/, "");
+  }
+});
 
 // Crawl Execution & Timeout Limits
 const PER_PAGE_TIMEOUT_MS = 10000;       // Strict 10s ceiling per page (nav + extract + analysis)

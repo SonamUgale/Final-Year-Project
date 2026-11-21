@@ -6,8 +6,16 @@
  *    and multi-page audit list with per-page scores, evidence, and snapshots.
  */
 
-const API_BASE = "http://127.0.0.1:8000";
-const FRONTEND_BASE = "http://localhost:5173";
+let API_BASE = "http://127.0.0.1:8000";
+let FRONTEND_BASE = "http://localhost:5173";
+
+// Load user-configured endpoints from extension storage
+chrome.storage.sync.get(["darkshield_backend_url", "darkshield_frontend_url"], (cfg) => {
+  if (cfg) {
+    if (cfg.darkshield_backend_url) API_BASE = cfg.darkshield_backend_url.replace(/\/+$/, "");
+    if (cfg.darkshield_frontend_url) FRONTEND_BASE = cfg.darkshield_frontend_url.replace(/\/+$/, "");
+  }
+});
 
 let currentTab = null;
 let latestSingleScanId = null;
@@ -19,6 +27,23 @@ let statusPollTimer = null;
 // DOM Elements - Header & Target Tab
 const backendPill = document.getElementById("backend-status-pill");
 const backendText = document.getElementById("backend-status-text");
+
+// Allow quick backend configuration by clicking status pill
+if (backendPill) {
+  backendPill.title = "Click to configure DarkShield Backend API URL";
+  backendPill.style.cursor = "pointer";
+  backendPill.addEventListener("click", () => {
+    const current = API_BASE;
+    const newUrl = prompt("Enter DarkShield Backend API URL (e.g., https://your-backend.onrender.com or http://127.0.0.1:8000):", current);
+    if (newUrl !== null && newUrl.trim() !== "") {
+      const formatted = newUrl.trim().replace(/\/+$/, "");
+      chrome.storage.sync.set({ darkshield_backend_url: formatted }, () => {
+        API_BASE = formatted;
+        checkBackendHealth();
+      });
+    }
+  });
+}
 const tabTitle = document.getElementById("tab-title");
 const tabUrl = document.getElementById("tab-url");
 

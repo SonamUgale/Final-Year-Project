@@ -400,7 +400,7 @@ export function ScanPage({
   onDownloadPdf,
   downloadingPdf = false,
   modelInfo = null,
-  apiBase = "http://127.0.0.1:8000",
+  apiBase = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, ""),
 }) {
   // Mode selection: "single" vs "website"
   const [scanModeType, setScanModeType] = useState("single");

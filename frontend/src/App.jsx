@@ -12,7 +12,9 @@ import { AboutPage } from "./pages/AboutPage";
 import { SCAN_PIPELINE_STEPS } from "./components/LoadingStepper";
 import { DEFAULT_MODEL_METADATA } from "./constants/modelMetadata";
 
-const API_BASE = "http://127.0.0.1:8000";
+// Dynamic Backend API URL with local fallback
+const rawApiBase = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+const API_BASE = rawApiBase.replace(/\/+$/, "");
 
 function App() {
   // Navigation State

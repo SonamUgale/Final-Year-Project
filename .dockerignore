@@ -1,0 +1,46 @@
+# Version control & docs
+.git
+.gitignore
+.github
+README.md
+walkthrough.md
+DEPLOYMENT.md
+
+# Frontend & browser extension (hosted separately or installed in client browser)
+frontend
+browser_extension
+test_site
+
+# Virtual environments & dependencies
+venv
+.venv
+env
+node_modules
+frontend/node_modules
+frontend/dist
+
+# Python artifacts & caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+htmlcov
+.coverage
+
+# Temporary files, scratch tests and local logs
+scratch
+scratch_*.json
+test_write.txt
+Final-Year-Project
+
+# Local runtime secrets - do not bake into Docker image
+.env
+.env.*
+!.env.example
+
+# Runtime scan data (volume mounts will provide persistence in production)
+backend/data/scans/*
+backend/data/website_scans/*
+backend/data/website_snapshots/*
+!backend/data/.gitkeep

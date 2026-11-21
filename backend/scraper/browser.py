@@ -210,6 +210,34 @@ def scrape_website(url: str) -> dict:
                         page.wait_for_load_state("load", timeout=4000)
                     except Exception:
                         pass
+                    # Check post-navigation redirect target for SSRF
+                    dest_url = page.url
+                    if dest_url and dest_url != url:
+                        from backend.scraper.crawler import is_ssrf_safe_url
+                        is_safe_dest, dest_err = is_ssrf_safe_url(dest_url, allow_local=bool(os.getenv("DARKSHIELD_ALLOW_LOCAL_TEST", "").strip() in ("1", "true", "yes")))
+                        if not is_safe_dest and "DNS resolution failed" not in (dest_err or ""):
+                            logger.warning(f"Scan aborted: Page redirected to restricted SSRF target: {dest_url} ({dest_err})")
+                            return {
+                                "scan_status": "failed",
+                                "navigation_status": "failed",
+                                "requested_url": url,
+                                "final_url": dest_url,
+                                "url": url,
+                                "title": "Security Violation",
+                                "text": "",
+                                "links": [],
+                                "buttons": [],
+                                "inputs": [],
+                                "headers": {},
+                                "dom_elements": [],
+                                "screenshot_b64": None,
+                                "cookie_consent": {},
+                                "scan_duration_seconds": round(time.time() - t0, 2),
+                                "warning": None,
+                                "error_type": "ssrf_redirect_prohibited",
+                                "message": f"Scan aborted: Webpage attempted to redirect to an unauthorized internal address ({dest_err}).",
+                            }
+
                     # Navigation succeeded normally
                     navigation_status = "success"
                     scan_status = "complete"

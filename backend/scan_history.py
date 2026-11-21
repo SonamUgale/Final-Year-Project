@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DATA_DIR = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
 SCANS_DIR = os.path.join(DATA_DIR, "scans")
 INDEX_FILE = os.path.join(DATA_DIR, "scan_history_index.json")
 
