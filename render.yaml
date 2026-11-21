@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: darkshield-ai-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    branch: development
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: MAX_SCAN_CONCURRENCY
+        value: "1"
+      - key: SCAN_HEADLESS
+        value: "true"
+      - key: DARKSHIELD_ALLOW_LOCAL_TEST
+        value: "false"
