@@ -15,10 +15,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies required for curl health checks and Playwright
+# Install system dependencies required for curl health checks, Playwright Node driver (libatomic1)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies first to leverage Docker layer caching
