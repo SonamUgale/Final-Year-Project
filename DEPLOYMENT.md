@@ -1,6 +1,16 @@
 # DarkShield AI – Production Deployment Guide
 
-A step-by-step production deployment manual for **DarkShield AI – Deceptive Design & Dark Pattern Detection System**.
+A complete production deployment and operations manual for **DarkShield AI – Deceptive Design & Dark Pattern Detection System**.
+
+---
+
+## Live Production Deployments
+
+| Component | Platform | Plan | Production URL | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Frontend Web App** | **Vercel** | Hobby (Free $0) | **https://darkshield-ai-ashen.vercel.app** | **LIVE & OPERATIONAL** |
+| **Backend API Server** | **Render** | Free ($0) | **https://darkshield-ai-backend.onrender.com** | **LIVE & OPERATIONAL** |
+| **Browser Extension** | **Chrome Web Store / Unpacked** | Client-side | `browser_extension/` directory | **READY** |
 
 ---
 
@@ -134,13 +144,17 @@ In the **Environment Variables** panel in Vercel, add:
 | :--- | :--- |
 | `VITE_API_URL` | `https://your-backend-name.onrender.com` *(use your actual backend URL from Step 1, without trailing slash)* |
 
-### 2.3 Deploy
-1. Click **Deploy**.
-2. Vercel will install dependencies, build the Vite production bundle, and deploy to their global CDN in ~30 seconds.
-3. Once complete, you will receive a public URL such as:
-   `https://final-year-project-alpha.vercel.app`
-4. Open the URL. The sidebar status in the lower left corner will show:
-   **Backend Connected** (Green dot) • **FastAPI Online**
+### 2.3 Live Vercel Production Deployment
+The frontend has been built and deployed directly to Vercel production:
+- **Production URL**: `https://darkshield-ai-ashen.vercel.app`
+- **Project Name**: `darkshield-ai`
+- **Scope / Team**: `final-year-project16` (Hobby Plan)
+- **Framework**: `Vite`
+- **Output Directory**: `dist`
+- **Environment Variable**: `VITE_API_URL=https://darkshield-ai-backend.onrender.com`
+
+When loading `https://darkshield-ai-ashen.vercel.app`, the sidebar status shows:
+**Backend Connected** (Green dot) • **FastAPI Online** (Calibrated Linear SVM V2 — 96.89% Accuracy)
 
 ---
 
